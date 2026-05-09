@@ -25,6 +25,10 @@ build/
 # Jupyter
 .ipynb_checkpoints/
 
+# Local NHANES inspection workspace (downloaded data + venv)
+inspect/data/
+inspect/.venv/
+
 # SQLite (runtime DB; do not commit user data)
 data.db
 *.sqlite
