@@ -40,6 +40,35 @@ struct HealthSnapshot {
         guard !recent.isEmpty else { return nil }
         return recent.map(\.value).reduce(0, +) / Double(recent.count)
     }
+
+    // 0–100 composite cardiovascular score. Returns nil when no data available.
+    var cardiovascularScore: Int? {
+        var components: [Double] = []
+
+        // Resting HR: 40 bpm → 100 pts, 100 bpm → 0 pts
+        if let rhr = weekAvg(restingHR) {
+            components.append(max(0, min(100, (100 - rhr) / 60 * 100)))
+        }
+        // HRV SDNN: 20 ms → 0 pts, 80 ms → 100 pts
+        if let h = weekAvg(hrv) {
+            components.append(max(0, min(100, (h - 20) / 60 * 100)))
+        }
+        // VO₂ Max: 25 → 0 pts, 60 → 100 pts
+        if let v = vo2Max?.value {
+            components.append(max(0, min(100, (v - 25) / 35 * 100)))
+        }
+        // Daily steps 7-day avg: 0 → 0 pts, 10 000 → 100 pts
+        if let s = weekAvg(stepsDaily) {
+            components.append(max(0, min(100, s / 10_000 * 100)))
+        }
+        // Exercise min/day: 0 → 0 pts, 60 → 100 pts
+        if let e = weekAvg(exerciseMinutes) {
+            components.append(max(0, min(100, e / 60 * 100)))
+        }
+
+        guard !components.isEmpty else { return nil }
+        return Int(components.reduce(0, +) / Double(components.count))
+    }
 }
 
 // MARK: - Manager

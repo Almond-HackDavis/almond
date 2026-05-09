@@ -5,8 +5,8 @@ final class APIRiskViewModel: ObservableObject {
     enum Phase: Equatable {
         case idle
         case uploading
-        case polling(attempt: Int)
-        case done(BridgeOutput)
+        case polling(status: String)
+        case done(RiskResponseFull)
         case failed(String)
 
         static func == (lhs: Phase, rhs: Phase) -> Bool {
@@ -21,33 +21,51 @@ final class APIRiskViewModel: ObservableObject {
     }
 
     @Published var phase: Phase = .idle
+    @Published var historyResponse: HistoryResponse?
 
     private let hk = HealthKitManager()
+
+    var riskResult: RiskResponseFull? {
+        if case .done(let r) = phase { return r }
+        return nil
+    }
 
     func uploadAndPoll() async {
         guard case .idle = phase else { return }
         phase = .uploading
 
         do {
-            let samples = try await hk.buildUploadPayload()
-            let output = try await APIClient.shared.submitInput(samples: samples)
-            phase = .done(output)
+            let payload = try await hk.buildUploadPayload()
+            let uploadResp = try await APIClient.shared.uploadHealthKit(payload)
+
+            if uploadResp.status == "failed" {
+                phase = .failed("Upload was rejected by the server. Please try again.")
+                return
+            }
+
+            phase = .polling(status: uploadResp.status)
+
+            let deadline = Date(timeIntervalSinceNow: 60)
+            while Date() < deadline {
+                let poll = try await APIClient.shared.getRisk(uploadId: uploadResp.uploadId)
+                switch poll {
+                case .done(let full):
+                    phase = .done(full)
+                    await loadHistory()
+                    return
+                case .failed:
+                    phase = .failed("Risk computation failed. Please try again.")
+                    return
+                case .pending(_, let status):
+                    phase = .polling(status: status)
+                    try await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+            }
+            phase = .failed(AlmondError.pollTimeout.localizedDescription ?? "Timed out.")
+        } catch AlmondError.sessionExpired {
+            phase = .failed("Session expired. Please sign in again.")
         } catch {
             phase = .failed(error.localizedDescription)
-        }
-    }
-
-    /// Skip upload — fetch the most recent result from GET /output.
-    func fetchLatestOnly() async {
-        phase = .polling(attempt: 0)
-        do {
-            if let output = try await APIClient.shared.fetchOutput() {
-                phase = .done(output)
-            } else {
-                phase = .idle  // nothing ready yet — show the Compute button
-            }
-        } catch {
-            phase = .idle  // network error on load — don't block the user, just show idle
         }
     }
 
@@ -56,4 +74,7 @@ final class APIRiskViewModel: ObservableObject {
         Task { await uploadAndPoll() }
     }
 
+    private func loadHistory() async {
+        historyResponse = try? await APIClient.shared.getHistory(days: 90)
+    }
 }

@@ -33,10 +33,10 @@ struct OnboardingView: View {
                 }
 
                 Section("Health history") {
-                    Toggle("Current smoker",                  isOn: $vm.smoking)
-                    Toggle("Type 2 diabetes",                 isOn: $vm.diabetes)
-                    Toggle("Family history of heart disease",  isOn: $vm.familyHistoryCvd)
-                    Toggle("On blood pressure medication",    isOn: $vm.onBpMedication)
+                    Toggle("Current smoker",                 isOn: $vm.smoking)
+                    Toggle("Type 2 diabetes",                isOn: $vm.diabetes)
+                    Toggle("Family history of heart disease", isOn: $vm.familyHistoryCvd)
+                    Toggle("On blood pressure medication",   isOn: $vm.onBpMedication)
                 }
                 .tint(Color.brandPrimary)
 
@@ -69,13 +69,28 @@ struct OnboardingView: View {
                     }
                 }
 
+                if let error = vm.submitError {
+                    Section {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Color.riskHigh)
+                    }
+                }
+
                 Section {
                     Button(action: submit) {
-                        Text("Get my health scores")
-                            .frame(maxWidth: .infinity)
-                            .fontWeight(.semibold)
+                        if vm.isSubmitting {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Get my health scores")
+                                .frame(maxWidth: .infinity)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Color.labelOnBrand)
+                        }
                     }
-                    .disabled(!vm.isValid)
+                    .disabled(!vm.isValid || vm.isSubmitting)
+                    .listRowBackground(vm.isValid ? Color.brandPrimary : Color.brandPrimary.opacity(0.4))
                 }
             }
             .navigationTitle("Quick health check")
@@ -85,7 +100,9 @@ struct OnboardingView: View {
     }
 
     private func submit() {
-        vm.save()
-        onComplete()
+        Task {
+            let ok = await vm.submit()
+            if ok { onComplete() }
+        }
     }
 }
