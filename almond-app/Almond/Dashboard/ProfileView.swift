@@ -1,20 +1,19 @@
 import SwiftUI
 
 struct ProfileView: View {
-    // All fields mirror OnboardingViewModel.save() keys
-    @AppStorage("ob.name")              private var name              = ""
-    @AppStorage("ob.age")               private var age               = 30
-    @AppStorage("ob.sex")               private var sex               = "M"
-    @AppStorage("ob.height_cm")         private var heightCm          = 0.0
-    @AppStorage("ob.weight_kg")         private var weightKg          = 0.0
-    @AppStorage("ob.smoking")           private var smoking           = false
-    @AppStorage("ob.diabetes")          private var diabetes          = false
+    @AppStorage("ob.name")               private var name              = ""
+    @AppStorage("ob.age")                private var age               = 30
+    @AppStorage("ob.sex")                private var sex               = "M"
+    @AppStorage("ob.height_cm")          private var heightCm          = 0.0
+    @AppStorage("ob.weight_kg")          private var weightKg          = 0.0
+    @AppStorage("ob.smoking")            private var smoking           = false
+    @AppStorage("ob.diabetes")           private var diabetes          = false
     @AppStorage("ob.family_history_cvd") private var familyHistoryCvd = false
-    @AppStorage("ob.on_bp_medication")  private var onBpMedication    = false
-    @AppStorage("ob.systolic_bp")       private var systolicBp        = 0
-    @AppStorage("ob.total_cholesterol") private var totalCholesterol  = 0
-    @AppStorage("ob.hdl_cholesterol")   private var hdlCholesterol    = 0
-    @AppStorage("ob.race_ethnicity")    private var raceEthnicity     = ""
+    @AppStorage("ob.on_bp_medication")   private var onBpMedication    = false
+    @AppStorage("ob.systolic_bp")        private var systolicBp        = 0
+    @AppStorage("ob.total_cholesterol")  private var totalCholesterol  = 0
+    @AppStorage("ob.hdl_cholesterol")    private var hdlCholesterol    = 0
+    @AppStorage("ob.race_ethnicity")     private var raceEthnicity     = ""
 
     private var bmi: Double? {
         guard heightCm > 0, weightKg > 0 else { return nil }
@@ -39,13 +38,15 @@ struct ProfileView: View {
                 Section {
                     HStack {
                         Spacer()
-                        VStack(spacing: 8) {
-                            Image(systemName: "person.circle.fill")
-                                .font(.system(size: 64))
-                                .foregroundStyle(.pink)
+                        VStack(spacing: 10) {
+                            Image("AlmondMark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 56, height: 56)
                             if !name.isEmpty {
                                 Text(name)
                                     .font(.title3.bold())
+                                    .foregroundStyle(Color.labelPrimary)
                             }
                         }
                         Spacer()
@@ -82,7 +83,7 @@ struct ProfileView: View {
                             TextField("cm", value: $heightCm, format: .number)
                                 .multilineTextAlignment(.trailing)
                                 .keyboardType(.decimalPad)
-                            Text("cm").foregroundStyle(.secondary)
+                            Text("cm").foregroundStyle(Color.labelTertiary)
                         }
                     }
                     LabeledContent("Weight") {
@@ -90,7 +91,7 @@ struct ProfileView: View {
                             TextField("kg", value: $weightKg, format: .number)
                                 .multilineTextAlignment(.trailing)
                                 .keyboardType(.decimalPad)
-                            Text("kg").foregroundStyle(.secondary)
+                            Text("kg").foregroundStyle(Color.labelTertiary)
                         }
                     }
                     if let b = bmi {
@@ -98,8 +99,9 @@ struct ProfileView: View {
                             HStack(spacing: 6) {
                                 Text(String(format: "%.1f", b))
                                     .fontWeight(.semibold)
+                                    .foregroundStyle(Color.labelPrimary)
                                 Text("· \(bmiCategory)")
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.labelSecondary)
                                     .font(.caption)
                             }
                         }
@@ -108,25 +110,28 @@ struct ProfileView: View {
 
                 // MARK: Health history
                 Section("Health history") {
-                    Toggle("Current smoker",               isOn: $smoking)
-                    Toggle("Type 2 diabetes",              isOn: $diabetes)
+                    Toggle("Current smoker",                 isOn: $smoking)
+                    Toggle("Type 2 diabetes",                isOn: $diabetes)
                     Toggle("Family history of heart disease", isOn: $familyHistoryCvd)
-                    Toggle("On blood pressure medication", isOn: $onBpMedication)
+                    Toggle("On blood pressure medication",   isOn: $onBpMedication)
                 }
+                .tint(Color.brandPrimary)
 
                 // MARK: Clinical values
                 Section {
-                    OptionalIntRow(label: "Systolic BP",        unit: "mmHg", value: $systolicBp)
-                    OptionalIntRow(label: "Total cholesterol",   unit: "mg/dL", value: $totalCholesterol)
-                    OptionalIntRow(label: "HDL cholesterol",     unit: "mg/dL", value: $hdlCholesterol)
+                    OptionalIntRow(label: "Systolic BP",      unit: "mmHg",  value: $systolicBp)
+                    OptionalIntRow(label: "Total cholesterol", unit: "mg/dL", value: $totalCholesterol)
+                    OptionalIntRow(label: "HDL cholesterol",   unit: "mg/dL", value: $hdlCholesterol)
                 } header: {
                     Text("Clinical values (optional)")
                 } footer: {
                     Text("Leave at 0 if unknown. Used for cardiovascular risk equations.")
                         .font(.caption)
+                        .foregroundStyle(Color.labelTertiary)
                 }
             }
             .navigationTitle("Profile")
+            .tint(Color.brandPrimary)
         }
     }
 }
@@ -144,7 +149,7 @@ private struct OptionalIntRow: View {
                 TextField("—", value: $value, format: .number)
                     .multilineTextAlignment(.trailing)
                     .keyboardType(.numberPad)
-                Text(unit).foregroundStyle(.secondary)
+                Text(unit).foregroundStyle(Color.labelTertiary)
             }
         }
     }

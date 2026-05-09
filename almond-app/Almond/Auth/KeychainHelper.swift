@@ -1,36 +1,44 @@
 import Foundation
 import Security
 
-enum KeychainHelper {
-    static func save(key: String, value: String) {
-        guard let data = value.data(using: .utf8) else { return }
+final class KeychainHelper {
+    static let shared = KeychainHelper()
+    private let service = "com.almond.app"
+    private let account = "session_token"
+    private init() {}
+
+    func saveToken(_ token: String) {
+        guard let data = token.data(using: .utf8) else { return }
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
-            kSecAttrAccount: key,
-            kSecValueData: data,
-            kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            kSecAttrService: service,
+            kSecAttrAccount: account,
         ]
         SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
+        var add = query
+        add[kSecValueData] = data
+        SecItemAdd(add as CFDictionary, nil)
     }
 
-    static func load(key: String) -> String? {
+    func readToken() -> String? {
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
-            kSecAttrAccount: key,
+            kSecAttrService: service,
+            kSecAttrAccount: account,
             kSecReturnData: true,
-            kSecMatchLimit: kSecMatchLimitOne
+            kSecMatchLimit: kSecMatchLimitOne,
         ]
         var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
+        SecItemCopyMatching(query as CFDictionary, &result)
+        guard let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    static func delete(key: String) {
+    func deleteToken() {
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
-            kSecAttrAccount: key
+            kSecAttrService: service,
+            kSecAttrAccount: account,
         ]
         SecItemDelete(query as CFDictionary)
     }

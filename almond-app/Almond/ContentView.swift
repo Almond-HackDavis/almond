@@ -1,20 +1,23 @@
 import SwiftUI
 
 struct ContentView: View {
-    @AppStorage("onboarding_complete") private var onboardingComplete = false
-    @AppStorage("has_seen_welcome") private var hasSeenWelcome = false
+    @EnvironmentObject var authManager: AuthManager
 
     var body: some View {
         Group {
-            if onboardingComplete {
-                DashboardView()
-            } else if hasSeenWelcome {
-                OnboardingView(onComplete: { onboardingComplete = true })
+            if authManager.isAuthenticated {
+                if authManager.needsOnboarding {
+                    OnboardingView {
+                        authManager.markOnboardingComplete()
+                    }
+                } else {
+                    DashboardView()
+                }
             } else {
-                WelcomeView(onGetStarted: { hasSeenWelcome = true })
+                WelcomeView()
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: hasSeenWelcome)
-        .animation(.easeInOut(duration: 0.35), value: onboardingComplete)
+        .animation(.easeInOut(duration: 0.35), value: authManager.isAuthenticated)
+        .animation(.easeInOut(duration: 0.35), value: authManager.needsOnboarding)
     }
 }

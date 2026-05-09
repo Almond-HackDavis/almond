@@ -6,12 +6,6 @@ actor APIClient {
     private let baseURL: URL
     private var sessionToken: String?
 
-    private static let iso8601: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
     private init() {
         // Replace with Railway/Fly.io deployment URL before shipping.
         self.baseURL = URL(string: "https://api.almond.app")!
@@ -40,8 +34,29 @@ actor APIClient {
         return try await post(path: "/healthkit", body: request)
     }
 
-    func getRisk() async throws -> RiskResponse {
-        return try await get(path: "/risk")
+    /// GET /risk — optionally scoped to a specific upload_id for polling.
+    func getRisk(uploadId: String? = nil) async throws -> RiskPollResponse {
+        var path = "/risk"
+        if let id = uploadId { path += "?upload_id=\(id)" }
+        return try await get(path: path)
+    }
+
+    /// Polls GET /risk?upload_id=<id> every 5 s until status == "done" or 60 s elapses.
+    func pollRisk(uploadId: String) async throws -> RiskResponseFull {
+        let deadline = Date(timeIntervalSinceNow: 60)
+        while Date() < deadline {
+            let response = try await getRisk(uploadId: uploadId)
+            switch response {
+            case .done(let full):
+                return full
+            case .failed:
+                throw AlmondError.api(code: "processing_failed",
+                                      message: "Risk computation failed. Please try again.")
+            case .pending:
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
+        throw AlmondError.pollTimeout
     }
 
     func getHistory(days: Int = 90) async throws -> HistoryResponse {
@@ -85,6 +100,15 @@ actor APIClient {
         guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
+
+        if http.statusCode == 401 {
+            let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
+            if envelope?.error.code == "session_expired" {
+                throw AlmondError.sessionExpired
+            }
+            throw AlmondError.notAuthenticated
+        }
+
         guard (200..<300).contains(http.statusCode) else {
             let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
             throw AlmondError.api(

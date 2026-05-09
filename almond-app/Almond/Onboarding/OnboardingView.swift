@@ -13,7 +13,6 @@ struct OnboardingView: View {
                             .multilineTextAlignment(.trailing)
                     }
                     Stepper("Age: \(vm.age)", value: $vm.age, in: 18...100)
-
                     Picker("Sex", selection: $vm.sex) {
                         Text("Male").tag("M")
                         Text("Female").tag("F")
@@ -34,11 +33,12 @@ struct OnboardingView: View {
                 }
 
                 Section("Health history") {
-                    Toggle("Current smoker", isOn: $vm.smoking)
-                    Toggle("Type 2 diabetes", isOn: $vm.diabetes)
+                    Toggle("Current smoker",                 isOn: $vm.smoking)
+                    Toggle("Type 2 diabetes",                isOn: $vm.diabetes)
                     Toggle("Family history of heart disease", isOn: $vm.familyHistoryCvd)
-                    Toggle("On blood pressure medication", isOn: $vm.onBpMedication)
+                    Toggle("On blood pressure medication",   isOn: $vm.onBpMedication)
                 }
+                .tint(Color.brandPrimary)
 
                 Section {
                     Picker("Race / ethnicity (optional)", selection: $vm.raceEthnicity) {
@@ -69,22 +69,40 @@ struct OnboardingView: View {
                     }
                 }
 
+                if let error = vm.submitError {
+                    Section {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Color.riskHigh)
+                    }
+                }
+
                 Section {
                     Button(action: submit) {
-                        Text("Get my health scores")
-                            .frame(maxWidth: .infinity)
-                            .fontWeight(.semibold)
+                        if vm.isSubmitting {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Text("Get my health scores")
+                                .frame(maxWidth: .infinity)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Color.labelOnBrand)
+                        }
                     }
-                    .disabled(!vm.isValid)
+                    .disabled(!vm.isValid || vm.isSubmitting)
+                    .listRowBackground(vm.isValid ? Color.brandPrimary : Color.brandPrimary.opacity(0.4))
                 }
             }
             .navigationTitle("Quick health check")
             .navigationBarTitleDisplayMode(.large)
+            .tint(Color.brandPrimary)
         }
     }
 
     private func submit() {
-        vm.save()
-        onComplete()
+        Task {
+            let ok = await vm.submit()
+            if ok { onComplete() }
+        }
     }
 }
