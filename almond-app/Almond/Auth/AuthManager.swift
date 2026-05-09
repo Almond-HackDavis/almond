@@ -18,10 +18,10 @@ final class AuthManager: NSObject, ObservableObject {
 
     override init() {
         super.init()
-        loadStoredSession()
+        Task { await loadStoredSession() }
     }
 
-    private func loadStoredSession() {
+    private func loadStoredSession() async {
         guard let token = KeychainHelper.load(key: tokenKey),
               !token.isEmpty,
               let uid = UserDefaults.standard.string(forKey: userIdKey) else {
@@ -29,7 +29,7 @@ final class AuthManager: NSObject, ObservableObject {
             return
         }
         userId = uid
-        APIClient.shared.setSessionToken(token)
+        await APIClient.shared.setSessionToken(token)
         let done = UserDefaults.standard.bool(forKey: onboardingKey)
         state = done ? .authenticated : .needsOnboarding
     }
@@ -38,7 +38,7 @@ final class AuthManager: NSObject, ObservableObject {
         let response = try await APIClient.shared.login(appleIdentityToken: identityToken)
         KeychainHelper.save(key: tokenKey, value: response.sessionToken)
         UserDefaults.standard.set(response.userId, forKey: userIdKey)
-        APIClient.shared.setSessionToken(response.sessionToken)
+        await APIClient.shared.setSessionToken(response.sessionToken)
         userId = response.userId
         state = response.needsOnboarding ? .needsOnboarding : .authenticated
     }
@@ -53,7 +53,7 @@ final class AuthManager: NSObject, ObservableObject {
         KeychainHelper.delete(key: tokenKey)
         UserDefaults.standard.removeObject(forKey: userIdKey)
         UserDefaults.standard.removeObject(forKey: onboardingKey)
-        APIClient.shared.clearSessionToken()
+        Task { await APIClient.shared.clearSessionToken() }
         userId = nil
         state = .unauthenticated
     }
