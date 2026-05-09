@@ -1,172 +1,166 @@
 import SwiftUI
+import Charts
 
 struct ScoresView: View {
     @ObservedObject var vm: DashboardViewModel
-    @EnvironmentObject var authManager: AuthManager
 
     var body: some View {
         NavigationStack {
             Group {
-                if vm.isLoading {
-                    ProgressView("Loading scores…")
-                } else if let risk = vm.risk {
-                    scoresList(risk: risk)
+                if vm.isLoading && vm.snapshot == nil {
+                    ProgressView("Reading health data…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let snap = vm.snapshot {
+                    metricsGrid(snap: snap)
                 } else {
                     ContentUnavailableView(
-                        "No scores yet",
+                        "No health data",
                         systemImage: "heart.slash",
-                        description: Text("Pull to sync your Apple Watch data.")
+                        description: Text(vm.errorMessage ?? "Allow health access in Settings → Privacy → Health → Almond.")
                     )
                 }
             }
-            .navigationTitle("Health Scores")
+            .navigationTitle("Health Metrics")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        Task { await vm.syncAndRefresh() }
-                    } label: {
-                        if vm.isRefreshing {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                        }
+                    Button { Task { await vm.refresh() } } label: {
+                        if vm.isLoading { ProgressView() }
+                        else { Image(systemName: "arrow.clockwise") }
                     }
-                    .disabled(vm.isRefreshing)
+                    .disabled(vm.isLoading)
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Sign Out") { authManager.signOut() }
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .alert("Error", isPresented: .constant(vm.errorMessage != nil)) {
-                Button("OK") { vm.errorMessage = nil }
-            } message: {
-                Text(vm.errorMessage ?? "")
             }
         }
     }
 
     @ViewBuilder
-    private func scoresList(risk: RiskResponse) -> some View {
-        List {
-            Section("Cardiovascular") {
-                ScoreRow(
-                    title: "ASCVD 10-yr risk",
-                    value: String(format: "%.1f%%", risk.scores.ascvd10yr.value),
-                    category: risk.scores.ascvd10yr.category
+    private func metricsGrid(snap: HealthSnapshot) -> some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
+                // Resting HR
+                MetricCard(
+                    icon: "heart.fill", color: .red,
+                    title: "Resting HR",
+                    value: snap.latestRestingHR.map { String(format: "%.0f", $0) } ?? "—",
+                    unit: "bpm",
+                    subtitle: snap.weekAvg(snap.restingHR).map { String(format: "7d avg %.0f bpm", $0) }
                 )
-                ScoreRow(
-                    title: "Framingham 10-yr CVD",
-                    value: String(format: "%.1f%%", risk.scores.framingham10yrCvd.value),
-                    category: risk.scores.framingham10yrCvd.category
-                )
-            }
 
-            Section("Metabolic") {
-                ScoreRow(
-                    title: "Diabetes risk (FINDRISC)",
-                    value: String(format: "%.0f / %.0f", risk.scores.findrisc10yrDiabetes.value, risk.scores.findrisc10yrDiabetes.max),
-                    category: risk.scores.findrisc10yrDiabetes.category
+                // HRV
+                MetricCard(
+                    icon: "waveform.path.ecg", color: .pink,
+                    title: "HRV (SDNN)",
+                    value: snap.weekAvg(snap.hrv).map { String(format: "%.0f", $0) } ?? "—",
+                    unit: "ms",
+                    subtitle: "7-day average"
                 )
-                ScoreRow(
-                    title: "AHA Life's Essential 8",
-                    value: String(format: "%.0f / %.0f", risk.scores.lifeEssential8.value, risk.scores.lifeEssential8.max),
-                    category: risk.scores.lifeEssential8.category
-                )
-            }
 
-            Section("Fitness") {
-                ScoreRow(
-                    title: "Fitness age",
-                    value: "\(risk.scores.fitnessAge.value) yrs",
-                    category: risk.scores.fitnessAge.delta > 0 ? "worse" : "better",
-                    detail: "\(risk.scores.fitnessAge.delta > 0 ? "+" : "")\(risk.scores.fitnessAge.delta) vs chronological"
+                // VO2 Max
+                MetricCard(
+                    icon: "lungs.fill", color: .blue,
+                    title: "VO₂ Max",
+                    value: snap.vo2Max.map { String(format: "%.1f", $0.value) } ?? "—",
+                    unit: "ml/kg/min",
+                    subtitle: snap.vo2Max.map { "Measured \(relativeDate($0.date))" }
                 )
-            }
 
-            Section("Mortality") {
-                ScoreRow(
-                    title: "NHANES 10-yr mortality",
-                    value: String(format: "%.1f%%", risk.scores.nhanesMortality10yr.value),
-                    category: "neutral",
-                    detail: String(format: "95%% CI: %.1f–%.1f%%",
-                                  risk.scores.nhanesMortality10yr.ciLow,
-                                  risk.scores.nhanesMortality10yr.ciHigh)
+                // Steps
+                MetricCard(
+                    icon: "figure.walk", color: .green,
+                    title: "Daily Steps",
+                    value: snap.weekAvg(snap.stepsDaily).map { String(format: "%.0f", $0) } ?? "—",
+                    unit: "steps",
+                    subtitle: "7-day average"
                 )
-            }
 
-            if !risk.topDrivers.isEmpty {
-                Section("Top risk drivers") {
-                    ForEach(risk.topDrivers) { driver in
-                        DriverRow(driver: driver)
-                    }
+                // Active Energy
+                MetricCard(
+                    icon: "flame.fill", color: .orange,
+                    title: "Active Energy",
+                    value: snap.weekAvg(snap.activeEnergy).map { String(format: "%.0f", $0) } ?? "—",
+                    unit: "kcal",
+                    subtitle: "7-day average"
+                )
+
+                // Exercise Minutes
+                MetricCard(
+                    icon: "figure.run", color: .purple,
+                    title: "Exercise",
+                    value: snap.weekAvg(snap.exerciseMinutes).map { String(format: "%.0f", $0) } ?? "—",
+                    unit: "min / day",
+                    subtitle: "7-day average"
+                )
+
+                // Walking HR
+                if !snap.walkingHR.isEmpty {
+                    MetricCard(
+                        icon: "heart.circle", color: .teal,
+                        title: "Walking HR",
+                        value: snap.weekAvg(snap.walkingHR).map { String(format: "%.0f", $0) } ?? "—",
+                        unit: "bpm",
+                        subtitle: "7-day average"
+                    )
+                }
+
+                // Wrist Temp
+                if !snap.wristTemp.isEmpty {
+                    MetricCard(
+                        icon: "thermometer.medium", color: .indigo,
+                        title: "Wrist Temp",
+                        value: snap.weekAvg(snap.wristTemp).map { String(format: "%+.2f", $0) } ?? "—",
+                        unit: "°C vs baseline",
+                        subtitle: "7-day average"
+                    )
                 }
             }
+            .padding()
         }
-        .refreshable { await vm.syncAndRefresh() }
+        .refreshable { await vm.refresh() }
+    }
+
+    private func relativeDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
-// MARK: - Sub-views
+// MARK: - Metric card
 
-private struct ScoreRow: View {
+private struct MetricCard: View {
+    let icon: String
+    let color: Color
     let title: String
     let value: String
-    let category: String
-    var detail: String? = nil
+    let unit: String
+    var subtitle: String? = nil
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline)
-                if let detail {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+                Spacer()
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.headline)
-                Text(category.capitalized)
+                    .font(.title2.bold())
+                Text(unit)
                     .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(categoryColor.opacity(0.15))
-                    .foregroundStyle(categoryColor)
-                    .clipShape(Capsule())
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var categoryColor: Color {
-        switch category.lowercased() {
-        case "low", "better", "optimal": return .green
-        case "elevated", "moderate", "borderline": return .orange
-        case "high", "worse": return .red
-        default: return .secondary
-        }
-    }
-}
-
-private struct DriverRow: View {
-    let driver: RiskDriver
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: driver.direction == "worse" ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
-                .foregroundStyle(driver.direction == "worse" ? .red : .green)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(driver.humanLabel)
-                    .font(.subheadline)
-                Text(String(format: "Your value: %.1f  |  Norm: %.1f", driver.value, driver.populationNorm))
-                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            if let sub = subtitle {
+                Text(sub)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 }

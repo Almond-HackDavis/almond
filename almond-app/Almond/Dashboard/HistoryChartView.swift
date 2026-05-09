@@ -3,40 +3,41 @@ import Charts
 
 struct HistoryChartView: View {
     @ObservedObject var vm: DashboardViewModel
-    @State private var selectedSeries: SeriesKey = .ascvd
 
     enum SeriesKey: String, CaseIterable, Identifiable {
         var id: String { rawValue }
-        case ascvd = "ASCVD Risk"
-        case fitnessAge = "Fitness Age"
-        case restingHR = "Resting HR"
-        case vo2 = "VO₂ Max"
-        case sleep = "Sleep Regularity"
+        case restingHR   = "Resting HR"
+        case hrv         = "HRV"
+        case steps       = "Steps"
+        case activeEnergy = "Active Cal"
+        case exerciseMin = "Exercise Min"
     }
+
+    @State private var selected: SeriesKey = .restingHR
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Picker("Series", selection: $selectedSeries) {
-                    ForEach(SeriesKey.allCases) { key in
-                        Text(key.rawValue).tag(key)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(SeriesKey.allCases) { key in
+                            Button(key.rawValue) { selected = key }
+                                .buttonStyle(.bordered)
+                                .tint(selected == key ? .pink : .secondary)
+                        }
                     }
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
                 }
-                .pickerStyle(.segmented)
-                .padding()
 
                 Group {
-                    if vm.isLoading {
+                    if vm.isLoading && vm.snapshot == nil {
                         ProgressView("Loading trends…")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let history = vm.history {
-                        chartView(history: history)
+                    } else if let snap = vm.snapshot {
+                        chartContent(snap: snap)
                     } else {
-                        ContentUnavailableView(
-                            "No trend data",
-                            systemImage: "chart.xyaxis.line",
-                            description: Text("Sync your Apple Watch data to see trends.")
-                        )
+                        ContentUnavailableView("No data", systemImage: "chart.xyaxis.line")
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -46,74 +47,43 @@ struct HistoryChartView: View {
     }
 
     @ViewBuilder
-    private func chartView(history: HistoryResponse) -> some View {
-        let points = dataPoints(for: selectedSeries, history: history)
+    private func chartContent(snap: HealthSnapshot) -> some View {
+        let points = series(for: selected, snap: snap)
 
-        Chart {
-            ForEach(points) { point in
-                LineMark(
-                    x: .value("Date", point.date),
-                    y: .value(selectedSeries.rawValue, point.value)
-                )
-                .foregroundStyle(Color.pink)
-
-                AreaMark(
-                    x: .value("Date", point.date),
-                    y: .value(selectedSeries.rawValue, point.value)
-                )
-                .foregroundStyle(Color.pink.opacity(0.1))
+        if points.isEmpty {
+            ContentUnavailableView(
+                "No \(selected.rawValue) data",
+                systemImage: "chart.xyaxis.line",
+                description: Text("Wear your Apple Watch to record this metric.")
+            )
+        } else {
+            Chart {
+                ForEach(points) { pt in
+                    LineMark(x: .value("Date", pt.date, unit: .day),
+                             y: .value(selected.rawValue, pt.value))
+                        .foregroundStyle(.pink)
+                    AreaMark(x: .value("Date", pt.date, unit: .day),
+                             y: .value(selected.rawValue, pt.value))
+                        .foregroundStyle(.pink.opacity(0.1))
+                }
             }
-        }
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .day, count: 14)) { _ in
-                AxisGridLine()
-                AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .day, count: 7)) { _ in
+                    AxisGridLine()
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                }
             }
+            .padding()
         }
-        .padding()
     }
 
-    private struct ChartPoint: Identifiable {
-        let id = UUID()
-        let date: Date
-        let value: Double
-    }
-
-    private static let dayParser: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")!
-        return f
-    }()
-
-    private func dataPoints(for key: SeriesKey, history: HistoryResponse) -> [ChartPoint] {
-        let fmt = Self.dayParser
+    private func series(for key: SeriesKey, snap: HealthSnapshot) -> [HealthSnapshot.DatedValue] {
         switch key {
-        case .ascvd:
-            return history.series.ascvd10yr.compactMap { (point: HistoryDataPoint) -> ChartPoint? in
-                guard let d = fmt.date(from: point.date) else { return nil }
-                return ChartPoint(date: d, value: point.value)
-            }
-        case .fitnessAge:
-            return history.series.fitnessAge.compactMap { (point: HistoryDataPoint) -> ChartPoint? in
-                guard let d = fmt.date(from: point.date) else { return nil }
-                return ChartPoint(date: d, value: point.value)
-            }
-        case .restingHR:
-            return history.series.restingHrDaily.compactMap { (point: BPMHistoryPoint) -> ChartPoint? in
-                guard let d = fmt.date(from: point.date) else { return nil }
-                return ChartPoint(date: d, value: point.bpm)
-            }
-        case .vo2:
-            return history.series.vo2Max.compactMap { (point: HistoryDataPoint) -> ChartPoint? in
-                guard let d = fmt.date(from: point.date) else { return nil }
-                return ChartPoint(date: d, value: point.value)
-            }
-        case .sleep:
-            return history.series.sleepRegularity.compactMap { (point: HistoryDataPoint) -> ChartPoint? in
-                guard let d = fmt.date(from: point.date) else { return nil }
-                return ChartPoint(date: d, value: point.value)
-            }
+        case .restingHR:    return snap.restingHR
+        case .hrv:          return snap.hrv
+        case .steps:        return snap.stepsDaily
+        case .activeEnergy: return snap.activeEnergy
+        case .exerciseMin:  return snap.exerciseMinutes
         }
     }
 }
