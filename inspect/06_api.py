@@ -109,20 +109,27 @@ app.add_middleware(
 @app.get("/health")
 def health() -> dict:
     db = app.state.db
-    in_doc  = db["input"].find_one({"_id": SINGLETON_ID}, {"last_uploaded_at": 1, "dirty": 1})
+    in_doc  = db["input"].find_one({"_id": SINGLETON_ID},
+                                   {"last_uploaded_at": 1, "last_processed_at": 1})
     out_doc = db["output"].find_one({"_id": SINGLETON_ID}, {"computed_at": 1})
+    needs_compute = (
+        in_doc is not None
+        and (in_doc.get("last_processed_at") is None
+             or in_doc["last_processed_at"] < in_doc["last_uploaded_at"])
+    )
     return {
         "ok": True,
         "db": db.name,
         "input": {
-            "exists": in_doc is not None,
-            "last_uploaded_at": in_doc.get("last_uploaded_at") if in_doc else None,
-            "dirty": in_doc.get("dirty") if in_doc else None,
+            "exists":             in_doc is not None,
+            "last_uploaded_at":   in_doc.get("last_uploaded_at")   if in_doc else None,
+            "last_processed_at":  in_doc.get("last_processed_at")  if in_doc else None,
         },
         "output": {
-            "exists": out_doc is not None,
+            "exists":      out_doc is not None,
             "computed_at": out_doc.get("computed_at") if out_doc else None,
         },
+        "needs_compute": needs_compute,
     }
 
 
@@ -130,8 +137,12 @@ def health() -> dict:
 def upsert_input(req: InputRequest) -> InputAck:
     """iOS calls this every hour while the app is open. Replaces the singleton.
 
-    The doc is marked `dirty=True`; the worker picks it up on its next poll
-    (within ~2 s), runs Cox + Gemini, and upserts the singleton output.
+    Stamps `last_uploaded_at = now`. The worker recomputes whenever
+    `last_uploaded_at > last_processed_at`, which is naturally race-safe:
+    a POST that lands while the worker is processing the previous version
+    bumps `last_uploaded_at` again, and the worker's post-process write of
+    `last_processed_at = <old uploaded>` leaves the inequality in place so
+    the next poll picks it up.
     """
     now = datetime.now(timezone.utc)
     app.state.db["input"].update_one(
@@ -140,7 +151,6 @@ def upsert_input(req: InputRequest) -> InputAck:
             "onboarding":       req.onboarding.model_dump(),
             "samples":          req.samples,
             "last_uploaded_at": now,
-            "dirty":            True,
         }},
         upsert=True,
     )
@@ -160,11 +170,18 @@ def get_output() -> dict:
     """Returns the current prediction. 404 until the worker has run at least once."""
     doc = app.state.db["output"].find_one({"_id": SINGLETON_ID})
     if doc is None:
-        in_doc = app.state.db["input"].find_one({"_id": SINGLETON_ID}, {"dirty": 1})
+        in_doc = app.state.db["input"].find_one(
+            {"_id": SINGLETON_ID}, {"last_uploaded_at": 1, "last_processed_at": 1}
+        )
         if in_doc is None:
             raise HTTPException(status_code=404, detail={"error": "no_input_yet"})
         raise HTTPException(
             status_code=404,
-            detail={"error": "not_ready", "dirty": in_doc.get("dirty", True)},
+            detail={
+                "error": "not_ready",
+                "last_uploaded_at": in_doc["last_uploaded_at"].isoformat(),
+                "last_processed_at": (in_doc.get("last_processed_at").isoformat()
+                                      if in_doc.get("last_processed_at") else None),
+            },
         )
     return doc

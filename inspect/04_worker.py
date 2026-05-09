@@ -152,14 +152,25 @@ def build_output_doc(input_doc: dict, raw_risk: float, vitality: float, recommen
 # ── One pass: read singleton input, write singleton output ─────────────────
 
 def run_once(db, model, lookup, gen_client) -> str:
-    """One pass over the singleton input. Returns a status string."""
+    """One pass over the singleton input. Returns a status string.
+
+    Race-safe recompute test: process iff `last_uploaded_at > last_processed_at`
+    (or `last_processed_at` is unset). After processing, set
+    `last_processed_at` to the snapshot of `last_uploaded_at` we read at the
+    start — NOT to `now()`. That way if a new POST landed during processing,
+    it bumped `last_uploaded_at` past our snapshot, the inequality survives
+    our write, and the next poll picks up the newer input automatically.
+    """
     in_doc = db["input"].find_one({"_id": SINGLETON_ID})
     if in_doc is None:
         return "no_input"
-    if not in_doc.get("dirty", True):
+
+    uploaded = in_doc["last_uploaded_at"]
+    processed = in_doc.get("last_processed_at")
+    if processed is not None and processed >= uploaded:
         return "clean"
 
-    print("  ◀ singleton input is dirty, processing …", flush=True)
+    print(f"  ◀ input changed at {uploaded.isoformat()}, processing …", flush=True)
     try:
         features = features_from_doc(in_doc)
         raw_risk = predict_2yr_mortality(model, features)
@@ -175,21 +186,26 @@ def run_once(db, model, lookup, gen_client) -> str:
         out_doc = build_output_doc(in_doc, raw_risk, vitality, recommendation)
         db["output"].update_one({"_id": SINGLETON_ID}, {"$set": out_doc}, upsert=True)
 
-        # Mark input clean so we don't reprocess until the next iOS POST.
+        # Stamp `last_processed_at` with the SNAPSHOT, not now(). If a new
+        # POST landed mid-processing, last_uploaded_at is now > uploaded, so
+        # the next poll will recompute against the fresh data.
         db["input"].update_one(
             {"_id": SINGLETON_ID},
-            {"$set": {"dirty": False, "last_processed_at": out_doc["computed_at"]}},
+            {"$set": {"last_processed_at": uploaded}},
         )
         print(f"  ▶ wrote output (computed_at={out_doc['computed_at'].isoformat()})", flush=True)
         return "done"
     except Exception as e:
         print(f"  ✕ failed: {e}", flush=True)
+        # Stamp processed=uploaded so we don't loop on a poison pill.
+        # iOS can re-POST identical data to retry; that bumps last_uploaded_at
+        # past our stamp and the worker tries again.
         db["input"].update_one(
             {"_id": SINGLETON_ID},
             {"$set": {
-                "dirty":          False,   # don't loop on a poison pill
-                "failure_reason": str(e)[:500],
-                "failed_at":      datetime.now(timezone.utc),
+                "last_processed_at": uploaded,
+                "failure_reason":    str(e)[:500],
+                "failed_at":         datetime.now(timezone.utc),
             }},
         )
         return "failed"
