@@ -4,117 +4,97 @@
   "n_test": 2134,
   "n_events_train": 104,
   "n_events_test": 34,
-  "concordance": 0.831991546044856,
-  "concordance_se": 0.03464959157495124,
-  "auc_at_horizon": 0.8345518207282914,
+  "concordance": 0.8253173709311865,
+  "concordance_se": 0.034431963239803055,
+  "auc_at_horizon": 0.8276610644257703,
   "passes_dod": true,
   "dod_threshold": 0.7,
   "coefficients": [
     {
       "feature": "age",
-      "beta": 0.07363133110804795,
-      "hazard_ratio_per_unit": 1.076409893493441
+      "beta": 0.08062902783765773,
+      "hazard_ratio_per_unit": 1.0839686997570026
     },
     {
       "feature": "sex_male",
-      "beta": 0.5538103704594364,
-      "hazard_ratio_per_unit": 1.7398699524455354
+      "beta": 0.5708880790520502,
+      "hazard_ratio_per_unit": 1.7698381098693314
     },
     {
-      "feature": "bmi",
-      "beta": -0.008817957890503627,
-      "hazard_ratio_per_unit": 0.991220806276235
+      "feature": "bmi_dev",
+      "beta": 0.013539746045728324,
+      "hazard_ratio_per_unit": 1.013631823506384
     },
     {
-      "feature": "mean_daily_mims",
-      "beta": -1.888747560847544e-07,
-      "hazard_ratio_per_unit": 0.9999998111252617
-    },
-    {
-      "feature": "sd_daily_mims",
-      "beta": 9.39332511211147e-07,
-      "hazard_ratio_per_unit": 1.0000009393329523
-    },
-    {
-      "feature": "mean_sleep_min",
-      "beta": 0.0018524995423963098,
-      "hazard_ratio_per_unit": 1.0018542164797184
-    },
-    {
-      "feature": "sd_sleep_min",
-      "beta": -0.002619062679190879,
-      "hazard_ratio_per_unit": 0.9973843640731886
-    },
-    {
-      "feature": "mean_wake_wear_min",
-      "beta": -0.0023399351233048126,
-      "hazard_ratio_per_unit": 0.997662800390828
+      "feature": "sleep_dev",
+      "beta": 0.003950234003425316,
+      "hazard_ratio_per_unit": 1.0039580464613913
     }
   ],
   "calibration": [
     {
       "decile": 0,
       "n": 214,
-      "predicted_mean": 0.0006532589010100862,
+      "predicted_mean": 0.0004840022709855984,
       "observed_rate": 0.0
     },
     {
       "decile": 1,
       "n": 213,
-      "predicted_mean": 0.0011848876041468449,
+      "predicted_mean": 0.0009686157495261972,
       "observed_rate": 0.0
     },
     {
       "decile": 2,
       "n": 213,
-      "predicted_mean": 0.0018929821984914222,
-      "observed_rate": 0.009389671361502348
+      "predicted_mean": 0.001722267350052344,
+      "observed_rate": 0.004694835680751174
     },
     {
       "decile": 3,
       "n": 214,
-      "predicted_mean": 0.0029731961314541392,
-      "observed_rate": 0.004672897196261682
+      "predicted_mean": 0.002752914671231084,
+      "observed_rate": 0.009345794392523364
     },
     {
       "decile": 4,
       "n": 213,
-      "predicted_mean": 0.004524117381347247,
+      "predicted_mean": 0.004514348533503213,
       "observed_rate": 0.004694835680751174
     },
     {
       "decile": 5,
       "n": 213,
-      "predicted_mean": 0.007217880887693407,
+      "predicted_mean": 0.007033268087003618,
       "observed_rate": 0.0
     },
     {
       "decile": 6,
       "n": 214,
-      "predicted_mean": 0.011508335829222857,
-      "observed_rate": 0.014018691588785047
+      "predicted_mean": 0.01155538526322315,
+      "observed_rate": 0.0
     },
     {
       "decile": 7,
       "n": 213,
-      "predicted_mean": 0.01847467844052368,
-      "observed_rate": 0.014084507042253521
+      "predicted_mean": 0.018913300271362867,
+      "observed_rate": 0.03286384976525822
     },
     {
       "decile": 8,
       "n": 213,
-      "predicted_mean": 0.032534288819082616,
-      "observed_rate": 0.018779342723004695
+      "predicted_mean": 0.03332864151336756,
+      "observed_rate": 0.028169014084507043
     },
     {
       "decile": 9,
       "n": 214,
-      "predicted_mean": 0.0747545920969497,
-      "observed_rate": 0.09345794392523364
+      "predicted_mean": 0.07384328343874484,
+      "observed_rate": 0.0794392523364486
     }
   ],
   "training": {
-    "alpha": 0.0001,
+    "alpha": 0.01,
     "test_size": 0.25,
     "random_state": 42,
     "n_bootstrap_se": 200

@@ -58,7 +58,11 @@ DATA_DIR = _c.DATA_DIR
 MODELS_DIR = Path(__file__).resolve().parent / "models"
 SEED = 42
 TEST_SIZE = 0.25
-ALPHA = 1e-4           # mild L2 — avoids alpha=0 instability on collinear X
+# 100× stronger than the original 1e-4 — the previous setting let collinear
+# features fit with opposite signs (sd_daily_mims went +, mean_daily_mims went −,
+# essentially canceling). With the trimmed 5-feature vector this matters less,
+# but stronger L2 keeps the per-feature coefficients stable across re-runs.
+ALPHA = 0.01
 N_BOOTSTRAP = 200
 DOD_C_INDEX = 0.70
 
