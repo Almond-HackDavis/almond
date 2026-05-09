@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    @EnvironmentObject var authManager: AuthManager
+    let onComplete: () -> Void
     @StateObject private var vm = OnboardingViewModel()
 
     var body: some View {
@@ -65,26 +65,13 @@ struct OnboardingView: View {
                     }
                 }
 
-                if let error = vm.errorMessage {
-                    Section {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .font(.caption)
-                    }
-                }
-
                 Section {
                     Button(action: submit) {
-                        if vm.isSubmitting {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text("Get my health scores")
-                                .frame(maxWidth: .infinity)
-                                .fontWeight(.semibold)
-                        }
+                        Text("Get my health scores")
+                            .frame(maxWidth: .infinity)
+                            .fontWeight(.semibold)
                     }
-                    .disabled(!vm.isValid || vm.isSubmitting)
+                    .disabled(!vm.isValid)
                 }
             }
             .navigationTitle("Quick health check")
@@ -93,9 +80,7 @@ struct OnboardingView: View {
     }
 
     private func submit() {
-        Task {
-            guard (try? await vm.submit()) != nil else { return }
-            authManager.markOnboardingComplete()
-        }
+        vm.save()
+        onComplete()
     }
 }

@@ -1,15 +1,13 @@
 import SwiftUI
-import AuthenticationServices
 
-struct SignInWithAppleView: View {
-    @EnvironmentObject var authManager: AuthManager
-    @State private var errorMessage: String?
-    @State private var isLoading = false
+struct WelcomeView: View {
+    let onGetStarted: () -> Void
 
     var body: some View {
-        VStack(spacing: 40) {
+        VStack(spacing: 0) {
             Spacer()
 
+            // Logo + wordmark
             VStack(spacing: 16) {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 72))
@@ -17,7 +15,7 @@ struct SignInWithAppleView: View {
 
                 VStack(spacing: 6) {
                     Text("almond")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
                     Text("Your long-term health, simplified.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -26,62 +24,55 @@ struct SignInWithAppleView: View {
 
             Spacer()
 
-            VStack(spacing: 16) {
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
+            // Feature highlights
+            VStack(alignment: .leading, spacing: 18) {
+                FeatureRow(icon: "applewatch",       color: .pink,   text: "Reads your Apple Watch automatically")
+                FeatureRow(icon: "waveform.path.ecg", color: .red,   text: "Tracks heart rate, HRV and VO₂ Max")
+                FeatureRow(icon: "chart.xyaxis.line", color: .blue,  text: "30-day trends for every metric")
+                FeatureRow(icon: "moon.zzz",          color: .indigo, text: "Deep, REM and core sleep analysis")
+            }
+            .padding(.horizontal, 40)
 
-                if isLoading {
-                    ProgressView()
-                        .frame(height: 50)
-                } else {
-                    SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.fullName]
-                    } onCompletion: { result in
-                        handle(result)
-                    }
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(height: 50)
-                    .padding(.horizontal, 40)
-                }
+            Spacer()
 
-                Text("By signing in you allow Almond to read Apple Watch health data to compute your risk scores.")
+            // CTA
+            VStack(spacing: 12) {
+                Button(action: onGetStarted) {
+                    Text("Get Started")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(.pink)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .padding(.horizontal, 32)
+
+                Text("No account required. Your data stays on device.")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
             }
-            .padding(.bottom, 48)
+            .padding(.bottom, 52)
         }
     }
+}
 
-    private func handle(_ result: Result<ASAuthorization, Error>) {
-        switch result {
-        case .success(let auth):
-            guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-                  let tokenData = credential.identityToken,
-                  let token = String(data: tokenData, encoding: .utf8) else {
-                errorMessage = "Sign in failed: could not read identity token."
-                return
-            }
-            isLoading = true
-            errorMessage = nil
-            Task {
-                defer { isLoading = false }
-                do {
-                    try await authManager.signIn(identityToken: token)
-                } catch {
-                    errorMessage = error.localizedDescription
-                }
-            }
-        case .failure(let error):
-            if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
-                errorMessage = error.localizedDescription
-            }
+private struct FeatureRow: View {
+    let icon: String
+    let color: Color
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(color)
+                .frame(width: 28)
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.primary.opacity(0.85))
+            Spacer()
         }
     }
 }

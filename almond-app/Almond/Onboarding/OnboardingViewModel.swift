@@ -15,40 +15,24 @@ final class OnboardingViewModel: ObservableObject {
     @Published var hdlCholesterol: Int? = nil
     @Published var raceEthnicity: String? = nil
 
-    @Published var isSubmitting = false
-    @Published var errorMessage: String?
-
     var isValid: Bool {
         heightCm != nil && weightKg != nil
     }
 
-    func submit() async throws -> OnboardingResponse {
-        guard let height = heightCm, let weight = weightKg else {
-            throw AlmondError.api(code: "validation", message: "Height and weight are required.")
-        }
-        isSubmitting = true
-        defer { isSubmitting = false }
-        errorMessage = nil
-
-        do {
-            let request = OnboardingRequest(
-                age: age,
-                sex: sex,
-                heightCm: height,
-                weightKg: weight,
-                smoking: smoking,
-                diabetes: diabetes,
-                familyHistoryCvd: familyHistoryCvd,
-                raceEthnicity: raceEthnicity,
-                systolicBp: systolicBp,
-                totalCholesterol: totalCholesterol,
-                hdlCholesterol: hdlCholesterol,
-                onBpMedication: onBpMedication
-            )
-            return try await APIClient.shared.submitOnboarding(request)
-        } catch {
-            errorMessage = error.localizedDescription
-            throw error
-        }
+    func save() {
+        guard let height = heightCm, let weight = weightKg else { return }
+        let d = UserDefaults.standard
+        d.set(age,               forKey: "ob.age")
+        d.set(sex,               forKey: "ob.sex")
+        d.set(height,            forKey: "ob.height_cm")
+        d.set(weight,            forKey: "ob.weight_kg")
+        d.set(smoking,           forKey: "ob.smoking")
+        d.set(diabetes,          forKey: "ob.diabetes")
+        d.set(familyHistoryCvd,  forKey: "ob.family_history_cvd")
+        d.set(onBpMedication,    forKey: "ob.on_bp_medication")
+        if let bp   = systolicBp       { d.set(bp,   forKey: "ob.systolic_bp") }
+        if let tc   = totalCholesterol { d.set(tc,   forKey: "ob.total_cholesterol") }
+        if let hdl  = hdlCholesterol   { d.set(hdl,  forKey: "ob.hdl_cholesterol") }
+        if let race = raceEthnicity    { d.set(race, forKey: "ob.race_ethnicity") }
     }
 }
