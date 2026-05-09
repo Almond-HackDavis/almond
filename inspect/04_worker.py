@@ -97,7 +97,20 @@ def features_from_doc(doc: dict) -> dict:
     steps = np.asarray([d["count"]   for d in samples.get("steps_daily", [])],              dtype=float)
     kcal  = np.asarray([d["kcal"]    for d in samples.get("active_energy_daily_kcal", [])], dtype=float)
     excm  = np.asarray([d["minutes"] for d in samples.get("exercise_minutes_daily", [])],   dtype=float)
-    daily_mims = 250_000.0 * (steps / 1000.0) + 2_000.0 * kcal + 30_000.0 * excm
+
+    # Aggregate each signal independently so the per-signal arrays don't have to
+    # be the same length (real HK reads frequently aren't — e.g. 90 days of step
+    # counts, 39 days of active energy, 0 days of exercise time). Mean-of-each
+    # then linear combination = same scalar as the elementwise version when
+    # arrays match, but tolerates ragged inputs.
+    mean_steps = float(steps.mean()) if steps.size else 0.0
+    mean_kcal  = float(kcal.mean())  if kcal.size  else 0.0
+    mean_excm  = float(excm.mean())  if excm.size  else 0.0
+    mean_daily_mims = (
+        250_000.0 * (mean_steps / 1000.0)
+        + 2_000.0  * mean_kcal
+        + 30_000.0 * mean_excm
+    )
 
     sleep = np.asarray([s["duration_min"] for s in samples.get("sleep_sessions", [])], dtype=float)
     mean_sleep = float(sleep.mean()) if sleep.size else _g.SLEEP_OPTIMUM_MIN
@@ -109,7 +122,7 @@ def features_from_doc(doc: dict) -> dict:
         "bmi_dev":         abs(bmi_raw - _g.BMI_OPTIMUM),
         "sleep_dev":       abs(mean_sleep - _g.SLEEP_OPTIMUM_MIN),
         # Activity signal — feeds activity_bonus, NOT a Cox feature.
-        "mean_daily_mims": float(daily_mims.mean()) if daily_mims.size else 0.0,
+        "mean_daily_mims": mean_daily_mims,
     }
 
 
