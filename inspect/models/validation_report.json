@@ -1,0 +1,122 @@
+{
+  "horizon_months": 24,
+  "n_train": 6402,
+  "n_test": 2134,
+  "n_events_train": 104,
+  "n_events_test": 34,
+  "concordance": 0.831991546044856,
+  "concordance_se": 0.03464959157495124,
+  "auc_at_horizon": 0.8345518207282914,
+  "passes_dod": true,
+  "dod_threshold": 0.7,
+  "coefficients": [
+    {
+      "feature": "age",
+      "beta": 0.07363133110804795,
+      "hazard_ratio_per_unit": 1.076409893493441
+    },
+    {
+      "feature": "sex_male",
+      "beta": 0.5538103704594364,
+      "hazard_ratio_per_unit": 1.7398699524455354
+    },
+    {
+      "feature": "bmi",
+      "beta": -0.008817957890503627,
+      "hazard_ratio_per_unit": 0.991220806276235
+    },
+    {
+      "feature": "mean_daily_mims",
+      "beta": -1.888747560847544e-07,
+      "hazard_ratio_per_unit": 0.9999998111252617
+    },
+    {
+      "feature": "sd_daily_mims",
+      "beta": 9.39332511211147e-07,
+      "hazard_ratio_per_unit": 1.0000009393329523
+    },
+    {
+      "feature": "mean_sleep_min",
+      "beta": 0.0018524995423963098,
+      "hazard_ratio_per_unit": 1.0018542164797184
+    },
+    {
+      "feature": "sd_sleep_min",
+      "beta": -0.002619062679190879,
+      "hazard_ratio_per_unit": 0.9973843640731886
+    },
+    {
+      "feature": "mean_wake_wear_min",
+      "beta": -0.0023399351233048126,
+      "hazard_ratio_per_unit": 0.997662800390828
+    }
+  ],
+  "calibration": [
+    {
+      "decile": 0,
+      "n": 214,
+      "predicted_mean": 0.0006532589010100862,
+      "observed_rate": 0.0
+    },
+    {
+      "decile": 1,
+      "n": 213,
+      "predicted_mean": 0.0011848876041468449,
+      "observed_rate": 0.0
+    },
+    {
+      "decile": 2,
+      "n": 213,
+      "predicted_mean": 0.0018929821984914222,
+      "observed_rate": 0.009389671361502348
+    },
+    {
+      "decile": 3,
+      "n": 214,
+      "predicted_mean": 0.0029731961314541392,
+      "observed_rate": 0.004672897196261682
+    },
+    {
+      "decile": 4,
+      "n": 213,
+      "predicted_mean": 0.004524117381347247,
+      "observed_rate": 0.004694835680751174
+    },
+    {
+      "decile": 5,
+      "n": 213,
+      "predicted_mean": 0.007217880887693407,
+      "observed_rate": 0.0
+    },
+    {
+      "decile": 6,
+      "n": 214,
+      "predicted_mean": 0.011508335829222857,
+      "observed_rate": 0.014018691588785047
+    },
+    {
+      "decile": 7,
+      "n": 213,
+      "predicted_mean": 0.01847467844052368,
+      "observed_rate": 0.014084507042253521
+    },
+    {
+      "decile": 8,
+      "n": 213,
+      "predicted_mean": 0.032534288819082616,
+      "observed_rate": 0.018779342723004695
+    },
+    {
+      "decile": 9,
+      "n": 214,
+      "predicted_mean": 0.0747545920969497,
+      "observed_rate": 0.09345794392523364
+    }
+  ],
+  "training": {
+    "alpha": 0.0001,
+    "test_size": 0.25,
+    "random_state": 42,
+    "n_bootstrap_se": 200
+  }
+}
