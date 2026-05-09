@@ -1,42 +1,33 @@
-"""Phase 3 worker — Atlas-direct. Reads pending inputs, writes outputs.
+"""Single-user worker. One input doc, one output doc, both singletons.
 
-Talks to MongoDB Atlas only. No FastAPI, no HTTP — iOS hits Atlas directly,
-this worker hits Atlas directly. Two collections: `input` and `output`.
-
-Per-doc lifecycle on the `input` side:
-    pending → processing → done | failed
-
-The atomic claim uses `find_one_and_update({status: pending}, {$set: {status:
-processing, ...}})` so concurrent workers (if we ever run more than one) won't
-double-process the same input.
+Polls Atlas. When `almond.input._id="current"` has `dirty=True`, runs Cox
++ Gemini and upserts the prediction over `almond.output._id="current"`.
+Then flips the input's `dirty` flag back to False.
 
 Run modes:
 
-    inspect/.venv/bin/python inspect/04_worker.py --once
-    inspect/.venv/bin/python inspect/04_worker.py            # poll loop, default 5s
+    inspect/.venv/bin/python inspect/04_worker.py                     # poll loop, default 2s
+    inspect/.venv/bin/python inspect/04_worker.py --once              # one pass then exit
+    inspect/.venv/bin/python inspect/04_worker.py --poll-interval 5
 
 Env vars (read from inspect/.env via python-dotenv):
     GEMINI_API_KEY  — required
     MONGODB_URI     — required (Atlas SRV string)
     MONGODB_DB      — default `almond`
-    WORKER_ID       — default platform.node()
 """
 from __future__ import annotations
 
 import argparse
 import os
-import platform
 import sys
 import time
 from datetime import datetime, timezone
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 import numpy as np
-import pymongo
-from pymongo import MongoClient, ReturnDocument
+from pymongo import MongoClient
 
 try:
     from dotenv import load_dotenv
@@ -62,30 +53,26 @@ GEMINI_MODEL              = _g.GEMINI_MODEL
 HORIZON_MONTHS            = _g.HORIZON_MONTHS
 
 MODEL_ID = "almond-cox-2yr-v0.1.0"
+SINGLETON_ID = "current"
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--once", action="store_true", help="drain pending then exit")
-    p.add_argument("--poll-interval", type=int, default=5, help="seconds between polls (default 5)")
-    p.add_argument("--worker-id", default=None, help="overrides WORKER_ID env")
+    p.add_argument("--once", action="store_true", help="one pass then exit")
+    p.add_argument("--poll-interval", type=int, default=2, help="seconds between polls (default 2)")
     return p.parse_args()
 
 
-# ── Wire-format → 8-feature vector (same shape as 03_seed produces) ─────────
+# ── Wire-format → 4 Cox features + 1 activity_bonus signal ──────────────────
 
 def features_from_doc(doc: dict) -> dict:
-    """Map an input doc's onboarding + samples → the 5 Cox features.
+    """Map the input doc's onboarding + samples → the model's feature dict.
 
-    Mirrors `02_gemini.engineer_features` and `01c_features.build_features`.
-    Three features were dropped relative to the original 8-vector
-    (sd_daily_mims, sd_sleep_min, mean_wake_wear_min) — they were collinear
-    with kept features and produced perverse coefficients.
-
-    PLACEHOLDER MIMS composite: 250k*(steps/1000) + 2k*kcal + 30k*exercise_min.
-    Calibrate to NHANES MIMS scale empirically in a later phase.
+    Aggregates each signal independently so per-signal arrays don't have to
+    match length (real HK reads frequently don't — e.g. 90 days of steps,
+    39 of active energy, 0 of exercise time).
     """
     onboarding = doc["onboarding"]
     samples = doc.get("samples", {})
@@ -97,12 +84,6 @@ def features_from_doc(doc: dict) -> dict:
     steps = np.asarray([d["count"]   for d in samples.get("steps_daily", [])],              dtype=float)
     kcal  = np.asarray([d["kcal"]    for d in samples.get("active_energy_daily_kcal", [])], dtype=float)
     excm  = np.asarray([d["minutes"] for d in samples.get("exercise_minutes_daily", [])],   dtype=float)
-
-    # Aggregate each signal independently so the per-signal arrays don't have to
-    # be the same length (real HK reads frequently aren't — e.g. 90 days of step
-    # counts, 39 days of active energy, 0 days of exercise time). Mean-of-each
-    # then linear combination = same scalar as the elementwise version when
-    # arrays match, but tolerates ragged inputs.
     mean_steps = float(steps.mean()) if steps.size else 0.0
     mean_kcal  = float(kcal.mean())  if kcal.size  else 0.0
     mean_excm  = float(excm.mean())  if excm.size  else 0.0
@@ -116,23 +97,16 @@ def features_from_doc(doc: dict) -> dict:
     mean_sleep = float(sleep.mean()) if sleep.size else _g.SLEEP_OPTIMUM_MIN
 
     return {
-        # Cox features.
         "age":             age,
         "sex_male":        sex_male,
         "bmi_dev":         abs(bmi_raw - _g.BMI_OPTIMUM),
         "sleep_dev":       abs(mean_sleep - _g.SLEEP_OPTIMUM_MIN),
-        # Activity signal — feeds activity_bonus, NOT a Cox feature.
         "mean_daily_mims": mean_daily_mims,
     }
 
 
 def hk_summary(doc: dict) -> dict:
-    """Per-day means + raw bmi/sleep used in the Gemini user prompt.
-
-    Carries the human-readable raw values (BMI in kg/m², sleep in minutes)
-    so the prompt to Gemini shows familiar units rather than the J-shape
-    deviations the model uses internally.
-    """
+    """Per-day means + raw bmi/sleep used in the Gemini user prompt."""
     onboarding = doc.get("onboarding") or {}
     samples = doc.get("samples", {})
     steps = [d["count"]   for d in samples.get("steps_daily", [])]
@@ -140,7 +114,6 @@ def hk_summary(doc: dict) -> dict:
     excm  = [d["minutes"] for d in samples.get("exercise_minutes_daily", [])]
     sleep = [s["duration_min"] for s in samples.get("sleep_sessions", [])]
 
-    bmi: float
     if onboarding.get("height_cm") and onboarding.get("weight_kg"):
         bmi = float(onboarding["weight_kg"]) / (float(onboarding["height_cm"]) / 100.0) ** 2
     else:
@@ -155,14 +128,13 @@ def hk_summary(doc: dict) -> dict:
     }
 
 
-# ── Output doc construction ──────────────────────────────────────────────────
+# ── Output doc construction ─────────────────────────────────────────────────
 
 def build_output_doc(input_doc: dict, raw_risk: float, vitality: float, recommendation: Any) -> dict:
     return {
-        "_id":          str(uuid4()),
-        "input_id":     input_doc["_id"],
-        "user_id":      input_doc["user_id"],
-        "computed_at":  datetime.now(timezone.utc),
+        "_id":           SINGLETON_ID,
+        "computed_at":   datetime.now(timezone.utc),
+        "input_uploaded_at": input_doc.get("last_uploaded_at"),
         "scores": {
             "vitality_score":       {"value": vitality, "max": 100},
             "nhanes_mortality_2yr": {"value": raw_risk, "ci_low": None, "ci_high": None},
@@ -177,122 +149,99 @@ def build_output_doc(input_doc: dict, raw_risk: float, vitality: float, recommen
     }
 
 
-# ── Per-input pipeline ───────────────────────────────────────────────────────
+# ── One pass: read singleton input, write singleton output ─────────────────
 
-def claim_one(inputs, worker_id: str) -> dict | None:
-    """Atomically claim one pending input. Returns the claimed doc or None."""
-    return inputs.find_one_and_update(
-        {"status": "pending"},
-        {"$set": {
-            "status":     "processing",
-            "claimed_at": datetime.now(timezone.utc),
-            "claimed_by": worker_id,
-        }},
-        return_document=ReturnDocument.AFTER,
-        sort=[("uploaded_at", pymongo.ASCENDING)],
-    )
+def run_once(db, model, lookup, gen_client) -> str:
+    """One pass over the singleton input. Returns a status string."""
+    in_doc = db["input"].find_one({"_id": SINGLETON_ID})
+    if in_doc is None:
+        return "no_input"
+    if not in_doc.get("dirty", True):
+        return "clean"
 
-
-def process_one(inputs, outputs, doc: dict, model, lookup, gen_client) -> None:
-    """One input → one output. Marks input done on success, failed on error."""
-    iid = doc["_id"]
-    label = doc.get("persona_label", iid[:8])
-    print(f"  ◀ claimed {label}", flush=True)
-    stage = "scoring"
+    print("  ◀ singleton input is dirty, processing …", flush=True)
     try:
-        features = features_from_doc(doc)
+        features = features_from_doc(in_doc)
         raw_risk = predict_2yr_mortality(model, features)
         vitality = vitality_from_percentile(
-            raw_risk, features["age"], features["sex_male"], lookup,
-            mean_daily_mims=features.get("mean_daily_mims", 0.0),
+            raw_risk, features["age"], features["sex_male"], lookup
         )
-        print(f"    cox: raw={raw_risk*100:.3f}%  vitality={vitality:.1f} (percentile-based)", flush=True)
+        print(f"    cox: raw={raw_risk*100:.3f}%  vitality={vitality:.1f}", flush=True)
 
-        stage = "recommending"
-        prompt = build_user_prompt(features, raw_risk, vitality, hk_summary(doc))
+        prompt = build_user_prompt(features, raw_risk, vitality, hk_summary(in_doc))
         recommendation = call_gemini(gen_client, prompt)
         print(f"    gemini: {recommendation.summary[:80]}…", flush=True)
 
-        out_doc = build_output_doc(doc, raw_risk, vitality, recommendation)
-        outputs.insert_one(out_doc)
-        inputs.update_one({"_id": iid}, {"$set": {"status": "done", "completed_at": out_doc["computed_at"]}})
-        print(f"  ▶ wrote output _id={out_doc['_id'][:8]}…", flush=True)
+        out_doc = build_output_doc(in_doc, raw_risk, vitality, recommendation)
+        db["output"].update_one({"_id": SINGLETON_ID}, {"$set": out_doc}, upsert=True)
 
+        # Mark input clean so we don't reprocess until the next iOS POST.
+        db["input"].update_one(
+            {"_id": SINGLETON_ID},
+            {"$set": {"dirty": False, "last_processed_at": out_doc["computed_at"]}},
+        )
+        print(f"  ▶ wrote output (computed_at={out_doc['computed_at'].isoformat()})", flush=True)
+        return "done"
     except Exception as e:
-        print(f"  ✕ {stage} failed: {e}", flush=True)
-        inputs.update_one(
-            {"_id": iid},
+        print(f"  ✕ failed: {e}", flush=True)
+        db["input"].update_one(
+            {"_id": SINGLETON_ID},
             {"$set": {
-                "status":          "failed",
-                "failure_reason":  str(e)[:500],
-                "failure_stage":   stage,
-                "failed_at":       datetime.now(timezone.utc),
+                "dirty":          False,   # don't loop on a poison pill
+                "failure_reason": str(e)[:500],
+                "failed_at":      datetime.now(timezone.utc),
             }},
         )
+        return "failed"
 
 
-# ── Main loop ────────────────────────────────────────────────────────────────
-
-def drain(inputs, outputs, model, lookup, gen_client, worker_id: str) -> int:
-    """Claim + process every pending input until none remain. Returns count."""
-    n = 0
-    while True:
-        doc = claim_one(inputs, worker_id)
-        if doc is None:
-            break
-        process_one(inputs, outputs, doc, model, lookup, gen_client)
-        n += 1
-    return n
-
+# ── Main ────────────────────────────────────────────────────────────────────
 
 def main() -> int:
     args = parse_args()
 
-    api_key  = os.environ.get("GEMINI_API_KEY")
-    uri      = os.environ.get("MONGODB_URI")
-    db_name  = os.environ.get("MONGODB_DB", "almond")
-    worker_id = args.worker_id or os.environ.get("WORKER_ID") or platform.node()
-
+    api_key = os.environ.get("GEMINI_API_KEY")
+    uri     = os.environ.get("MONGODB_URI")
+    db_name = os.environ.get("MONGODB_DB", "almond")
     missing = [n for n, v in (("GEMINI_API_KEY", api_key), ("MONGODB_URI", uri)) if not v]
     if missing:
         print(f"missing env: {', '.join(missing)} — set in inspect/.env", file=sys.stderr)
         return 1
 
-    print(f"db:        {db_name}")
-    print(f"worker_id: {worker_id}")
-    print(f"mode:      {'once' if args.once else f'poll every {args.poll_interval}s'}\n")
+    print(f"db:   {db_name}")
+    print(f"mode: {'once' if args.once else f'poll every {args.poll_interval}s'}\n")
 
     print("loading Cox model …")
     model, _means = load_cox()
     print(f"  {len(model.coef_)} coefficients")
     print("loading percentile lookup …")
     lookup = load_percentile_lookup()
-    print(f"  {len(lookup)} (age × sex) buckets\n")
+    print(f"  {len(lookup)} bucket entries\n")
 
     print("connecting to Atlas …")
     client = MongoClient(uri, serverSelectionTimeoutMS=10_000)
     client.admin.command("ping")
     db = client[db_name]
-    inputs = db["input"]
-    outputs = db["output"]
-    print(f"  connected. input={inputs.count_documents({})} docs  output={outputs.count_documents({})} docs\n")
+    print(f"  connected.\n")
 
     print("initializing Gemini client …")
     gen_client = genai.Client(api_key=api_key)
     print(f"  model: {GEMINI_MODEL}\n")
 
     if args.once:
-        n = drain(inputs, outputs, model, lookup, gen_client, worker_id)
-        print(f"\ndone — processed {n} input(s).")
-        print(f"final state: input={inputs.count_documents({})}  output={outputs.count_documents({})}  pending={inputs.count_documents({'status': 'pending'})}")
+        status = run_once(db, model, lookup, gen_client)
+        print(f"\nstatus: {status}")
         return 0
 
-    print("entering poll loop (Ctrl-C to stop) …\n")
+    print(f"polling every {args.poll_interval}s (Ctrl-C to stop) …\n")
+    last_status = None
     try:
         while True:
-            n = drain(inputs, outputs, model, lookup, gen_client, worker_id)
-            if n == 0:
-                print(f"  (no pending; sleeping {args.poll_interval}s)", flush=True)
+            status = run_once(db, model, lookup, gen_client)
+            if status != last_status and status in ("clean", "no_input"):
+                # Print this transition once, not every poll.
+                print(f"  ({status}; sleeping {args.poll_interval}s)", flush=True)
+            last_status = status
             time.sleep(args.poll_interval)
     except KeyboardInterrupt:
         print("\nstopped by user.")
