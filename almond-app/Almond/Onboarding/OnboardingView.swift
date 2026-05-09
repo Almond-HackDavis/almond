@@ -74,10 +74,8 @@ struct OnboardingView: View {
                         Text("Get my health scores")
                             .frame(maxWidth: .infinity)
                             .fontWeight(.semibold)
-                            .foregroundStyle(Color.labelOnBrand)
                     }
                     .disabled(!vm.isValid)
-                    .listRowBackground(vm.isValid ? Color.brandPrimary : Color.brandPrimary.opacity(0.4))
                 }
             }
             .navigationTitle("Quick health check")

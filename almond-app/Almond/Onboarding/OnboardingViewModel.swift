@@ -23,18 +23,17 @@ final class OnboardingViewModel: ObservableObject {
     func save() {
         guard let height = heightCm, let weight = weightKg else { return }
         let d = UserDefaults.standard
-        d.set(name,             forKey: "ob.name")
-        d.set(age,              forKey: "ob.age")
-        d.set(sex,              forKey: "ob.sex")
-        d.set(height,           forKey: "ob.height_cm")
-        d.set(weight,           forKey: "ob.weight_kg")
-        d.set(smoking,          forKey: "ob.smoking")
-        d.set(diabetes,         forKey: "ob.diabetes")
-        d.set(familyHistoryCvd, forKey: "ob.family_history_cvd")
-        d.set(onBpMedication,   forKey: "ob.on_bp_medication")
-        if let bp  = systolicBp       { d.set(bp,  forKey: "ob.systolic_bp") }
-        if let tc  = totalCholesterol { d.set(tc,  forKey: "ob.total_cholesterol") }
-        if let hdl = hdlCholesterol   { d.set(hdl, forKey: "ob.hdl_cholesterol") }
-        if let r   = raceEthnicity    { d.set(r,   forKey: "ob.race_ethnicity") }
+        d.set(age,               forKey: "ob.age")
+        d.set(sex,               forKey: "ob.sex")
+        d.set(height,            forKey: "ob.height_cm")
+        d.set(weight,            forKey: "ob.weight_kg")
+        d.set(smoking,           forKey: "ob.smoking")
+        d.set(diabetes,          forKey: "ob.diabetes")
+        d.set(familyHistoryCvd,  forKey: "ob.family_history_cvd")
+        d.set(onBpMedication,    forKey: "ob.on_bp_medication")
+        if let bp   = systolicBp       { d.set(bp,   forKey: "ob.systolic_bp") }
+        if let tc   = totalCholesterol { d.set(tc,   forKey: "ob.total_cholesterol") }
+        if let hdl  = hdlCholesterol   { d.set(hdl,  forKey: "ob.hdl_cholesterol") }
+        if let race = raceEthnicity    { d.set(race, forKey: "ob.race_ethnicity") }
     }
 }
