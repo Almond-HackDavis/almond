@@ -2,7 +2,7 @@
 
 Takes a synthetic HealthKit-shape input (the 8 datapoints we're working with),
 engineers the 8 Cox features, predicts 2-year all-cause mortality, computes
-the user-facing Heart Health Score (1-risk)*100, and asks gemini-2.5-flash
+the user-facing Vitality Score (1-risk)*100, and asks gemini-2.5-flash
 for a structured 3-action recommendation.
 
 Run:
@@ -18,7 +18,7 @@ Deps:
 What it prints:
     1. Loaded model summary.
     2. Engineered 8-feature vector for the synthetic subject.
-    3. Cox raw probability + Heart Health Score.
+    3. Cox raw probability + Vitality Score.
     4. The full prompt sent to Gemini (system instruction + user message).
     5. The structured Gemini response (validated against the Pydantic schema).
 """
@@ -53,17 +53,118 @@ INSPECT_DIR = Path(__file__).resolve().parent
 MODELS_DIR = INSPECT_DIR / "models"
 COX_MODEL_PATH = MODELS_DIR / "cox_model.pkl"
 FEATURE_MEANS_PATH = MODELS_DIR / "feature_means.json"
+PERCENTILE_LOOKUP_PATH = MODELS_DIR / "percentile_lookup.json"
 
 GEMINI_MODEL = "gemini-2.5-flash"
 HORIZON_MONTHS = 24
-PROMPT_TEMPLATE_VERSION = "1.0.0"
+# 1.3.0: 4-feature Cox (drop MIMS; it's confounded with NHANES wear-time)
+#        + pool-percentile vitality + activity_bonus from MIMS.
+# 1.2.0: 5-feature Cox + hybrid bucket+absolute vitality. Within-age elite
+#        kept losing to healthy_avg because MIMS coefficient was wrong-signed.
+# 1.1.0: 8-feature Cox + pure within-bucket percentile (the original UX
+#        inversion: 65yo F sedentary 93 vs 32yo M healthy 72).
+PROMPT_TEMPLATE_VERSION = "1.3.0"
 
+# Locked Cox feature vector — must match 01c_features.py exactly.
 FEATURES: tuple[str, ...] = (
-    "age", "sex_male", "bmi",
-    "mean_daily_mims", "sd_daily_mims",
-    "mean_sleep_min", "sd_sleep_min",
-    "mean_wake_wear_min",
+    "age", "sex_male", "bmi_dev", "sleep_dev",
 )
+
+# J-shape reference values used by engineer_features. Must match 01c_features.py.
+BMI_OPTIMUM: float = 22.0
+SLEEP_OPTIMUM_MIN: float = 450.0
+
+# MIMS is NOT in the Cox model. It enters vitality via activity_bonus.
+MIMS_SCALE: float = 1_000_000.0          # raw MIMS → millions
+MIMS_REFERENCE_M: float = 3.0            # cohort median (~2.65), rounded
+MIMS_BONUS_RANGE_PT: float = 5.0         # ±5 vitality pts at the asymptote
+MIMS_BONUS_TIGHTNESS: float = 1.5        # tanh tightness — wider = gentler curve
+
+# Percentile lookup is bucketed by 5-yr age band × sex. Mirrors 05_percentiles.py.
+AGE_BANDS: tuple[tuple[int, int], ...] = (
+    (18, 25), (25, 30), (30, 35), (35, 40), (40, 45), (45, 50),
+    (50, 55), (55, 60), (60, 65), (65, 70), (70, 75), (75, 81),
+)
+
+
+def _bucket_key(age: float, sex_male: float) -> str:
+    """Stringified bucket id matching the keys in percentile_lookup.json."""
+    a = int(np.clip(age, 18, 80))
+    for lo, hi in AGE_BANDS:
+        if lo <= a < hi:
+            return f"{lo}-{hi - 1}_{int(sex_male)}"
+    lo, hi = AGE_BANDS[-1]
+    return f"{lo}-{hi - 1}_{int(sex_male)}"
+
+
+def load_percentile_lookup() -> dict[str, list[float]]:
+    """Load the precomputed (age × sex) bucket → sorted predicted-risk list."""
+    return json.loads(PERCENTILE_LOOKUP_PATH.read_text())
+
+
+def activity_bonus(mean_daily_mims: float) -> float:
+    """Activity bonus added to base vitality — keeps MIMS out of the Cox model.
+
+    Smooth curve via tanh:
+
+        bonus = MIMS_BONUS_RANGE_PT × tanh((MIMS_M − MIMS_REFERENCE_M) / TIGHTNESS)
+
+    With reference 3.0 M and range ±5 pts:
+
+        MIMS_M = 5.5 (very active)  →  bonus ≈ +4.7 pts
+        MIMS_M = 3.0 (median)       →  bonus =   0.0 pts
+        MIMS_M = 1.5 (sedentary)    →  bonus ≈ −3.7 pts
+        MIMS_M = 0.5 (frail)        →  bonus ≈ −4.7 pts
+
+    The asymptote prevents extreme values from blowing up the score.
+    """
+    mims_M = float(mean_daily_mims) / MIMS_SCALE
+    delta = (mims_M - MIMS_REFERENCE_M) / MIMS_BONUS_TIGHTNESS
+    return float(MIMS_BONUS_RANGE_PT * np.tanh(delta))
+
+
+def _pool_percentile(raw_risk: float, lookup: dict) -> float:
+    """Where does `raw_risk` rank in the whole NHANES training cohort? 0..1."""
+    pool = lookup.get("__pool__")
+    if not pool:
+        # Backward-compat: synthesize from per-bucket lists.
+        pool = sorted(r for k, lst in lookup.items() if k != "__pool__" for r in lst)
+    if not pool:
+        return 0.5
+    return float(np.searchsorted(pool, raw_risk, side="right")) / len(pool)
+
+
+def vitality_from_percentile(raw_risk: float, age: float, sex_male: float,
+                             lookup: dict[str, list[float]],
+                             mean_daily_mims: float = 0.0) -> float:
+    """Map raw 2-yr mortality risk + activity → vitality score (0..100, higher = better).
+
+    Two-layer score:
+
+        base       = 100 × (1 − pool_percentile(raw_risk))     # 0..100
+        bonus      = activity_bonus(mean_daily_mims)            # ±5 pts
+        vitality   = clip(base + bonus, 0, 100)
+
+    Pool percentile (across ALL NHANES training subjects, not within an
+    age+sex bucket) makes vitality monotone in age for the same lifestyle —
+    which is the property the original within-bucket formula violated when
+    a 65yo F with diabetes (1.20 % raw risk) outscored a healthy 32yo M
+    (0.19 %).
+
+    The `mean_daily_mims` argument is OPTIONAL — pass 0.0 to get the pure
+    pool-percentile score. The default keeps the previous call signatures
+    in tests and demos working unchanged.
+
+    Function name is kept stable for backward-compat with worker imports.
+    """
+    pct = _pool_percentile(raw_risk, lookup)
+    base = 100.0 * (1.0 - pct)
+    bonus = activity_bonus(mean_daily_mims) if mean_daily_mims else 0.0
+    return float(max(0.0, min(100.0, base + bonus)))
+
+
+# Public alias spelling out the new approach. Both names are exported.
+vitality_from_hybrid = vitality_from_percentile
 
 
 # ── Cox model loading + prediction ───────────────────────────────────────────
@@ -101,19 +202,22 @@ class HKInput:
 
 
 def engineer_features(hk: HKInput, today: date | None = None) -> dict:
-    """Map the 8 HK datapoints to the 8 locked Cox features.
+    """Map the HK datapoints to the 4 locked Cox features + the raw activity signal.
+
+    Mirrors `01c_features.py` exactly — same J-shape transforms for BMI and
+    sleep. The Cox model uses only (age, sex_male, bmi_dev, sleep_dev).
+    The raw `mean_daily_mims` is also returned so the activity_bonus layer
+    in vitality scoring can consume it; it is NOT a Cox covariate.
 
     NOTE: the steps + kcal + exercise → MIMS composite below is a PLACEHOLDER
     calibrated to roughly straddle the NHANES PAXDAY mean (~2.67M MIMS/day).
     Proper empirical calibration belongs in `ml.py` once we have ground-truth
-    pairs (Apple Watch raw acc + concurrent NHANES-style MIMS). For Phase 2
-    we just need plausible numbers in the right scale so the Cox prediction
-    is sensible.
+    pairs (Apple Watch raw acc + concurrent NHANES-style MIMS).
     """
     today = today or date.today()
     age_years = (today - hk.date_of_birth).days / 365.25
     sex_male = 1.0 if hk.biological_sex.upper() == "M" else 0.0
-    bmi = hk.body_mass_kg / (hk.height_m ** 2)
+    bmi_raw = hk.body_mass_kg / (hk.height_m ** 2)
 
     steps = np.asarray(hk.step_count_daily, dtype=float)
     kcal  = np.asarray(hk.active_energy_daily_kcal, dtype=float)
@@ -121,23 +225,16 @@ def engineer_features(hk: HKInput, today: date | None = None) -> dict:
     daily_mims = 250_000.0 * (steps / 1000.0) + 2_000.0 * kcal + 30_000.0 * excm
 
     sleep = np.asarray(hk.sleep_session_durations_min, dtype=float)
-    mean_sleep = float(sleep.mean()) if sleep.size else 0.0
-    sd_sleep   = float(sleep.std(ddof=1)) if sleep.size > 1 else 0.0
-
-    # Wake-wear time isn't in our HK input list; estimate from sleep duration.
-    # NHANES population mean was ~899 min/day; this gives roughly that for a
-    # 7-hour sleeper minus a small non-wear allowance.
-    wake_wear = float(24 * 60 - mean_sleep - 20.0) if sleep.size else 900.0
+    mean_sleep = float(sleep.mean()) if sleep.size else SLEEP_OPTIMUM_MIN
 
     return {
-        "age":                age_years,
-        "sex_male":           sex_male,
-        "bmi":                bmi,
-        "mean_daily_mims":    float(daily_mims.mean()),
-        "sd_daily_mims":      float(daily_mims.std(ddof=1)) if daily_mims.size > 1 else 0.0,
-        "mean_sleep_min":     mean_sleep,
-        "sd_sleep_min":       sd_sleep,
-        "mean_wake_wear_min": wake_wear,
+        # Cox features.
+        "age":             age_years,
+        "sex_male":        sex_male,
+        "bmi_dev":         abs(bmi_raw - BMI_OPTIMUM),
+        "sleep_dev":       abs(mean_sleep - SLEEP_OPTIMUM_MIN),
+        # Activity signal — for activity_bonus / display only, NOT a Cox feature.
+        "mean_daily_mims": float(daily_mims.mean()) if daily_mims.size else 0.0,
     }
 
 
@@ -159,7 +256,7 @@ class Recommendation(BaseModel):
 
 DISCLAIMER = "Almond is a wellness tool, not a medical device. Consult a licensed clinician for medical concerns."
 
-SYSTEM_INSTRUCTION = f"""You are Almond, a friendly wellness coach. You are NOT a medical doctor, you do not diagnose, and you do not prescribe. You translate a wearable-derived Heart Health Score into 3 small, evidence-based lifestyle suggestions.
+SYSTEM_INSTRUCTION = f"""You are Almond, a friendly wellness coach. You are NOT a medical doctor, you do not diagnose, and you do not prescribe. You translate a wearable-derived Vitality Score into 3 small, evidence-based lifestyle suggestions.
 
 Hard rules:
 - Output ONLY JSON matching the provided schema. No prose, no markdown, no code fences.
@@ -177,20 +274,32 @@ Schema:
 
 
 def build_user_prompt(features: dict, raw_risk: float, score: float, hk_summary: dict) -> str:
+    """Render the user-facing prompt block.
+
+    `hk_summary` carries the raw, user-readable values (bmi, mean_sleep_min,
+    daily averages) so the prompt shows familiar units rather than the
+    J-shape deviations the model uses internally.
+    """
     sex_label = "male" if features["sex_male"] == 1.0 else "female"
     return f"""USER SNAPSHOT (90-day HealthKit window):
 - Age: {features["age"]:.0f} years
 - Sex: {sex_label}
-- BMI: {features["bmi"]:.1f}
+- BMI: {hk_summary["bmi"]:.1f}
 - Steps / day (mean):              {hk_summary["avg_steps"]:>7,.0f}
 - Active energy / day (mean kcal): {hk_summary["avg_kcal"]:>7.0f}
 - Exercise minutes / day (mean):   {hk_summary["avg_exercise_min"]:>7.1f}
-- Sleep / night (mean):            {features["mean_sleep_min"] / 60:>7.1f} hours
-- Sleep variability (SD):          {features["sd_sleep_min"] / 60:>7.1f} hours
-- Wake-wear time / day (mean):     {features["mean_wake_wear_min"] / 60:>7.1f} hours
+- Sleep / night (mean):            {hk_summary["avg_sleep_min"] / 60:>7.1f} hours
 
-ALMOND HEART HEALTH SCORE (0-100, higher is better): {score:.1f}
-Underlying 2-year all-cause mortality probability: {raw_risk * 100:.2f}%
+ALMOND VITALITY SCORE (0-100, higher is better): {score:.1f}
+This score blends two things: 60% absolute 2-year mortality risk (the
+younger and healthier you are in absolute terms, the higher the score),
+and 40% how you compare to other US adults of the same age and sex.
+A 32-year-old healthy person should always outscore a 65-year-old with
+diabetes — even if the 65-year-old is exceptional for her age. Tune
+your tone accordingly: a low score deserves concrete, pointed advice;
+a high score deserves reinforcement.
+
+Underlying 2-year all-cause mortality probability (do NOT quote to user): {raw_risk * 100:.2f}%
 
 Produce 3 lifestyle actions tied to the strongest improvement levers in this snapshot. Reply with JSON only, exactly matching the schema. No medical claims."""
 
@@ -273,21 +382,30 @@ def main() -> None:
     print("building synthetic HealthKit input (32-yo moderately-active male, 90 days) …")
     hk = synthetic_hk()
     features = engineer_features(hk)
-    print("  engineered 8-feature vector:")
+    print(f"  engineered {len(FEATURES)}-feature vector:")
     for k in FEATURES:
         print(f"    {k:22s} {features[k]:>14.4f}")
     print()
 
     print("Cox prediction …")
     raw_risk = predict_2yr_mortality(model, features)
-    score = (1.0 - raw_risk) * 100.0
+    print("loading percentile lookup …")
+    lookup = load_percentile_lookup()
+    score = vitality_from_percentile(
+        raw_risk, features["age"], features["sex_male"], lookup,
+        mean_daily_mims=features.get("mean_daily_mims", 0.0),
+    )
+    naive_score = (1.0 - raw_risk) * 100.0
     print(f"  raw 2-yr mortality probability: {raw_risk * 100:.4f} %")
-    print(f"  Almond Heart Health Score:      {score:.2f} / 100\n")
+    print(f"  naive (1-risk)*100:             {naive_score:.2f} / 100   (for comparison)")
+    print(f"  Almond Vitality Score:          {score:.2f} / 100   (hybrid: 60% absolute + 40% age+sex peer)\n")
 
     hk_summary = {
         "avg_steps":         float(np.mean(hk.step_count_daily)),
         "avg_kcal":          float(np.mean(hk.active_energy_daily_kcal)),
         "avg_exercise_min":  float(np.mean(hk.exercise_time_daily_min)),
+        "avg_sleep_min":     float(np.mean(hk.sleep_session_durations_min)) if len(hk.sleep_session_durations_min) else SLEEP_OPTIMUM_MIN,
+        "bmi":               float(hk.body_mass_kg / (hk.height_m ** 2)),
     }
     user_prompt = build_user_prompt(features, raw_risk, score, hk_summary)
 

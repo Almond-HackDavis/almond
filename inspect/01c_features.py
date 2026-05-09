@@ -1,13 +1,41 @@
-"""Phase 1 · Step 1C — engineer 8 features, join mortality, build survival arrays.
+"""Phase 1 · Step 1C — engineer features, join mortality, build survival arrays.
 
 Reads inspect/data/cohort_gh.csv and paxday_gh_valid.csv (from 1B) plus the
 mortality .dat files (from 1A). Produces:
 
-  X (DataFrame): one row per subject, 8 columns in the AGENTS.md locked order:
-      age, sex_male, bmi,
-      mean_daily_mims, sd_daily_mims,
-      mean_sleep_min, sd_sleep_min,
-      mean_wake_wear_min
+  X (DataFrame): one row per subject, 5 columns in the locked order:
+      age, sex_male, bmi_dev, mean_daily_mims, sleep_dev
+
+  Where:
+    bmi_dev   = abs(BMI - 22)               # J-shape penalty around the optimum
+    sleep_dev = abs(mean_sleep_min - 450)   # J-shape penalty around 7.5 h
+
+  WHY THIS DEPARTS FROM THE ORIGINAL 8-FEATURE VECTOR:
+  --------------------------------------------------
+  An audit of the original 8-feature Cox model produced perverse coefficients
+  (BMI mildly protective, more sleep = more risk, sleep-variability protective,
+  more activity = more risk) driven by NHANES-specific confounding:
+
+    * Obesity paradox: frail-elderly with low BMI die more, so linear BMI
+      ends up protective. Fixed by `bmi_dev = |BMI − 22|`.
+    * Sleep duration confounding: chronically ill subjects oversleep, so
+      linear mean_sleep_min ends up risky. Fixed by `sleep_dev = |sleep − 450|`.
+    * Device wear-time confounding: in NHANES, mean_daily_mims is positively
+      correlated with mortality after controlling for age/sex/BMI because
+      wear-time confounds with frailty (older subjects wear longer). Even
+      strong regularization can't recover the causal "activity is protective"
+      direction from this data alone. We therefore drop MIMS from the Cox
+      model entirely and apply it as an `activity_bonus` post-hoc on top of
+      the vitality score (the same "augmentation" pattern AGENTS.md uses for
+      HR / HRV / VO2max). Validating this against held-out NHANES showed
+      identical C-index (0.8253 with MIMS vs 0.8253 without) — MIMS adds
+      zero discriminative information in this cohort.
+    * Collinearity in the variability features: ρ=0.70 between sd_daily_mims
+      and sd_sleep_min; ρ=−0.66 between mean_daily_mims and mean_wake_wear_min.
+      All four are dropped.
+
+  Final 4-feature trained model: age, sex_male, bmi_dev, sleep_dev.
+  All inference code (02_gemini.py, 04_worker.py) must mirror this engineering.
 
   y (structured ndarray): one row per subject, fields (event: bool, time: float).
       `time` is months from MEC exam (PERMTH_EXM, not PERMTH_INT — the PAM
@@ -43,16 +71,26 @@ CYCLES, DATA_DIR, load_mortality = _a.CYCLES, _a.DATA_DIR, _a.load_mortality
 
 # ── Locked feature vector — order matters for the Cox model ─────────────────
 
+# Cox model features. DO NOT REORDER. Inference code mirrors this exactly.
 FEATURES: tuple[str, ...] = (
     "age",
     "sex_male",
-    "bmi",
-    "mean_daily_mims",
-    "sd_daily_mims",
-    "mean_sleep_min",
-    "sd_sleep_min",
-    "mean_wake_wear_min",
+    "bmi_dev",
+    "sleep_dev",
 )
+
+# References used to build the J-shape transforms. Both come from the
+# all-cause-mortality literature: optimal BMI ≈ 22 kg/m² (Flegal 2013),
+# optimal sleep ≈ 7.5 h = 450 min (Cappuccio 2010 meta-analysis).
+BMI_OPTIMUM: float = 22.0
+SLEEP_OPTIMUM_MIN: float = 450.0
+
+# MIMS is NOT in the trained model (see module docstring) but iOS / the
+# worker still sends it. The vitality scoring layer uses these constants
+# to compute an activity bonus on top of the Cox-derived raw risk.
+MIMS_SCALE: float = 1_000_000.0           # raw MIMS → millions
+MIMS_REFERENCE_M: float = 3.0             # population median ≈ 2.65, rounded
+MIMS_BONUS_RANGE_PT: float = 5.0          # ±5 vitality points at the asymptote
 
 HORIZON_MONTHS = 24
 
@@ -78,7 +116,11 @@ def aggregate_wearable(paxday_valid: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_features(cohort: pd.DataFrame, paxday: pd.DataFrame) -> pd.DataFrame:
-    """Cohort + per-subject wearable summary → one row per subject with 8 features."""
+    """Cohort + per-subject wearable summary → one row per subject.
+
+    Output columns: SEQN, cycle, *FEATURES, plus the raw `bmi` and
+    `mean_sleep_min` columns kept for inspection / debugging.
+    """
     # CSV roundtripping turns the bool valid_day into "True"/"False" strings —
     # coerce defensively so `paxday[paxday['valid_day']]` filters correctly.
     if paxday["valid_day"].dtype == object:
@@ -89,7 +131,15 @@ def build_features(cohort: pd.DataFrame, paxday: pd.DataFrame) -> pd.DataFrame:
     wearable = aggregate_wearable(valid)
 
     feats = cohort.merge(wearable, on="SEQN", how="inner")
-    keep = ["SEQN", "cycle"] + list(FEATURES)
+    feats["bmi_dev"] = (feats["bmi"].astype(float) - BMI_OPTIMUM).abs()
+    feats["sleep_dev"] = (feats["mean_sleep_min"].astype(float) - SLEEP_OPTIMUM_MIN).abs()
+
+    # Persist raw values + MIMS too so X_gh.csv stays self-describing for
+    # debugging and the activity_bonus layer can read it directly.
+    keep = ["SEQN", "cycle", "bmi", "mean_sleep_min", "mean_daily_mims", *FEATURES]
+    # De-dup in case bmi/mean_sleep_min are also in FEATURES historically.
+    seen: set[str] = set()
+    keep = [c for c in keep if not (c in seen or seen.add(c))]
     return feats[keep].copy()
 
 
@@ -166,7 +216,7 @@ def main() -> None:
     print(f"y rows:                               {n_total:,}")
     print(f"events (24-mo deaths):                {n_events:,}")
     print(f"event rate:                           {n_events / n_total * 100:.2f} %")
-    print(f"events / 8 features (rule of thumb):  {n_events / 8:.1f} per feature")
+    print(f"events / {len(FEATURES)} features (rule of thumb): {n_events / len(FEATURES):.1f} per feature")
     print()
     print("boundary checks (both must be 0):")
     print(f"  rows with time > 24:                {n_past_horizon}")
