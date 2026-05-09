@@ -38,8 +38,8 @@ There is **no separate web dashboard** in this build — everything is in the iP
 |---|---|---|
 | iOS app | Swift 5.9+, SwiftUI, HealthKit, Sign in with Apple | iOS 17+ minimum, watchOS 10+ minimum (no watch app code, but data must reach iPhone) |
 | Backend framework | FastAPI (Python 3.11+) | Single `main.py` entry point inside `almond-ml/` |
-| Backend deps | `fastapi`, `uvicorn[standard]`, `pydantic`, `sqlmodel`, `pyjwt[crypto]`, `google-generativeai`, `numpy`, `pandas`, `scikit-survival`, `scipy`, `python-multipart` | Pinned in `almond-ml/pyproject.toml` |
-| Database | SQLite (single file at `almond-ml/data.db`) | No Postgres. No Redis. No external KV. |
+| Backend deps | `fastapi`, `uvicorn[standard]`, `pydantic`, `beanie`, `motor`, `pyjwt[crypto]`, `google-generativeai`, `numpy`, `pandas`, `scikit-survival`, `scipy`, `python-multipart` | Pinned in `almond-ml/pyproject.toml` |
+| Database | MongoDB (Atlas free tier `M0`, or local `mongod` for dev) | Single database `almond`. No Postgres. No Redis. No external KV. |
 | ML model | scikit-survival `CoxPHSurvivalAnalysis` trained on NHANES + accelerometer + linked NDI mortality | Saved as `almond-ml/models/cox_model.pkl` + `almond-ml/models/feature_means.json` for imputation defaults |
 | ML training | Python notebooks in `almond-ml/training/` (offline) | Output is the `.pkl` artifact + the JSON; reproducible with a fixed seed |
 | LLM | `gemini-2.5-flash` via `google-generativeai` SDK | Pin model name in code; use `response_mime_type="application/json"` |
@@ -65,7 +65,7 @@ almond/
 ├── almond-ml/                  # Godfather's territory — every Python file lives here
 │   ├── main.py                 # FastAPI app + route handlers (thin)
 │   ├── schemas.py              # Pydantic models — SOURCE OF TRUTH for API JSON
-│   ├── db.py                   # SQLModel definitions
+│   ├── db.py                   # Beanie Document models + Motor client init
 │   ├── auth.py                 # Sign in with Apple verification + JWT issuance
 │   ├── ml.py                   # Cox model load + feature engineering + augmentation
 │   ├── risk_equations.py       # ASCVD, Framingham, FINDRISC, LE8 (pure functions, no IO)
@@ -92,14 +92,14 @@ almond/
 3. **Background sync** — every time the app opens AND on a 4-hour `BGAppRefreshTask`, iOS pulls the last 90 days of HealthKit data and sends `POST /healthkit`.
 4. **Backend processing** (synchronous within the request, ~2–4 seconds expected):
    1. Validate the payload against `schemas.HealthKitUpload`
-   2. Persist raw payload to `healthkit_uploads`
+   2. Persist raw payload to the `healthkit_uploads` collection
    3. Compute features (averages, trends, sleep regularity, fragmentation) — `ml.engineer_features()`
    4. Run NHANES Cox model → 10-year mortality / CVD hazard — `ml.predict_cox()`
    5. Apply augmentation rules for HR / HRV / VO2 max — `ml.apply_augmentation()`
    6. Compute clinical equations (ASCVD, Framingham, FINDRISC, LE8) — `risk_equations.compute_all()`
    7. Identify top 3 risk drivers — `ml.top_drivers()`
    8. Call Gemini with structured prompt — `gemini.recommend()`
-   9. Persist to `risk_predictions` and `gemini_recommendations`
+   9. Persist to the `risk_predictions` and `gemini_recommendations` collections
 5. **Display** — iOS calls `GET /risk` for the latest scores + recommendation, and `GET /history?days=90` for the trend tab.
 
 ## API contracts (JSON — DO NOT CHANGE WITHOUT A SCHEMA-CHANGE PR)
@@ -293,15 +293,17 @@ with HTTP status:
 
 ## Database schema
 
-Defined in `almond-ml/db.py` using SQLModel. Tables auto-create on app startup. **Do not write raw SQL migrations.**
+Defined in `almond-ml/db.py` using Beanie `Document` models on top of Motor (async MongoDB driver). Beanie is initialized in the FastAPI lifespan handler (`init_beanie(database=client.almond, document_models=[...])`); collections and indexes are created on app startup. **Do not write raw migration scripts** — schema changes happen by editing the Document classes and (if needed) writing an idempotent backfill in `almond-ml/scripts/`.
 
-| Table | Columns |
+Object IDs use Mongo's native `ObjectId` for the document `_id` (exposed as `id` in API responses); cross-collection references are stored as `ObjectId` fields, not embedded. JSON-shaped payloads (`scores`, `top_drivers`, `payload`, `response`) are stored as native BSON sub-documents — **no stringified JSON blobs**.
+
+| Collection | Fields |
 |---|---|
-| `users` | `id` (uuid PK), `apple_user_id` (str unique), `created_at` (datetime) |
-| `onboarding` | `id` (uuid PK), `user_id` (FK), `age` (int), `sex` (str), `height_cm` (float), `weight_kg` (float), `smoking` (bool), `diabetes` (bool), `family_history_cvd` (bool), `race_ethnicity` (str nullable), `systolic_bp` (int nullable), `total_cholesterol` (int nullable), `hdl_cholesterol` (int nullable), `on_bp_medication` (bool nullable), `completed_at` (datetime) |
-| `healthkit_uploads` | `id` (uuid PK), `user_id` (FK), `uploaded_at` (datetime), `window_start` (datetime), `window_end` (datetime), `payload_json` (str — full request body) |
-| `risk_predictions` | `id` (uuid PK), `user_id` (FK), `upload_id` (FK), `computed_at` (datetime), `scores_json` (str), `top_drivers_json` (str) |
-| `gemini_recommendations` | `id` (uuid PK), `prediction_id` (FK), `prompt_template_version` (str), `prompt_full` (str), `response_json` (str), `model_name` (str), `latency_ms` (int) |
+| `users` | `_id` (ObjectId), `apple_user_id` (str, unique index), `created_at` (datetime) |
+| `onboarding` | `_id` (ObjectId), `user_id` (ObjectId, indexed), `age` (int), `sex` (str), `height_cm` (float), `weight_kg` (float), `smoking` (bool), `diabetes` (bool), `family_history_cvd` (bool), `race_ethnicity` (str nullable), `systolic_bp` (int nullable), `total_cholesterol` (int nullable), `hdl_cholesterol` (int nullable), `on_bp_medication` (bool nullable), `completed_at` (datetime) |
+| `healthkit_uploads` | `_id` (ObjectId), `user_id` (ObjectId, indexed), `uploaded_at` (datetime, indexed desc), `window_start` (datetime), `window_end` (datetime), `payload` (sub-document — full request body as BSON) |
+| `risk_predictions` | `_id` (ObjectId), `user_id` (ObjectId, indexed), `upload_id` (ObjectId), `computed_at` (datetime, indexed desc), `scores` (sub-document), `top_drivers` (array of sub-documents). Compound index on `(user_id, computed_at desc)` for `GET /risk` and `GET /history` |
+| `gemini_recommendations` | `_id` (ObjectId), `prediction_id` (ObjectId, indexed), `prompt_template_version` (str), `prompt_full` (str), `response` (sub-document), `model_name` (str), `latency_ms` (int) |
 
 ## Gemini prompt contract
 
@@ -405,7 +407,8 @@ APPLE_TEAM_ID=                      # from Apple Developer portal
 APPLE_BUNDLE_ID=com.almond.app
 APPLE_KEY_ID=                       # the key ID for Sign in with Apple
 APPLE_PRIVATE_KEY_PATH=             # path to the .p8 file (file itself is gitignored)
-DATABASE_URL=sqlite:///./data.db
+MONGODB_URL=mongodb://localhost:27017       # local dev; for prod use the Atlas SRV string
+MONGODB_DB_NAME=almond
 ```
 
 `.env` and `*.p8` are in `.gitignore`. If you add a new secret, add the key (with a placeholder value) to `.env.example` in the same PR.
@@ -414,7 +417,7 @@ DATABASE_URL=sqlite:///./data.db
 
 - Adding a Python or Swift dependency
 - Changing any Pydantic model in `almond-ml/schemas.py`
-- Changing any SQLModel definition in `almond-ml/db.py`
+- Changing any Beanie `Document` definition (or its indexes) in `almond-ml/db.py`
 - Changing the Gemini prompt template
 - Choosing a different hosting platform / database / framework
 - Working on a feature outside the assigned folder
@@ -429,6 +432,6 @@ DATABASE_URL=sqlite:///./data.db
 ## Definition of Done per component
 
 - **`almond-app/`**: builds in Xcode, signs in with Apple, completes onboarding, uploads HealthKit data, displays scores + recommendation + history charts. No Xcode warnings. Manually tested on a real Apple Watch + iPhone (or simulator with seeded HealthKit).
-- **`almond-ml/`**: `uvicorn main:app` runs locally, all five endpoints respond per the schemas above, SQLite persists across restarts, `pytest almond-ml/tests` passes, deploys cleanly to Railway.
+- **`almond-ml/`**: `uvicorn main:app` runs locally against a `mongod` (or Atlas) instance, all five endpoints respond per the schemas above, MongoDB persists across restarts, indexes are created on startup, `pytest almond-ml/tests` passes (uses a throwaway test database name, dropped on teardown), deploys cleanly to Railway with `MONGODB_URL` pointing at Atlas.
 - **ML model**: `cox_model.pkl` loads in <1 s, predictions deterministic for fixed inputs, validation concordance index ≥ 0.70 on held-out NHANES split, training notebook reproducible (fixed seed + pinned package versions).
 - **Gemini integration**: prompt produces valid JSON every time, no medical-diagnosis language, disclaimer always present, latency <5 s.
