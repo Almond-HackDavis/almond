@@ -8,6 +8,10 @@ struct OnboardingView: View {
         NavigationStack {
             Form {
                 Section("About you") {
+                    LabeledContent("Name") {
+                        TextField("Your name", text: $vm.name)
+                            .multilineTextAlignment(.trailing)
+                    }
                     Stepper("Age: \(vm.age)", value: $vm.age, in: 18...100)
 
                     Picker("Sex", selection: $vm.sex) {

@@ -2,6 +2,7 @@ import Foundation
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {
+    @Published var name: String = ""
     @Published var age: Int = 30
     @Published var sex: String = "M"
     @Published var heightCm: Double? = nil
@@ -22,6 +23,7 @@ final class OnboardingViewModel: ObservableObject {
     func save() {
         guard let height = heightCm, let weight = weightKg else { return }
         let d = UserDefaults.standard
+        d.set(name,              forKey: "ob.name")
         d.set(age,               forKey: "ob.age")
         d.set(sex,               forKey: "ob.sex")
         d.set(height,            forKey: "ob.height_cm")
