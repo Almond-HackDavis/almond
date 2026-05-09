@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Almond reads your Apple Watch health data to compute personalized long-term health-risk scores.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Almond may write health records to HealthKit.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.almond.app.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Almond uses Face ID to protect your health data.</string>
+</dict>
+</plist>
