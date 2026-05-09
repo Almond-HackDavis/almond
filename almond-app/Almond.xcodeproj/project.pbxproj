@@ -26,12 +26,6 @@
 		AA000000000000000000003E /* BackgroundTasks.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002A /* BackgroundTasks.framework */; };
 		AA0000000000000000000041 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000003F /* Preview Assets.xcassets */; };
 		AA0000000000000000000044 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000043 /* ProfileView.swift */; };
-		AA0000000000000000000046 /* Color+Almond.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000045 /* Color+Almond.swift */; };
-		CC000000000000000000CC06 /* APIRiskViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC05 /* APIRiskViewModel.swift */; };
-		CC000000000000000000CC08 /* RiskDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC07 /* RiskDashboardView.swift */; };
-		CC000000000000000000CC0A /* MongoDBConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC09 /* MongoDBConfig.swift */; };
-		CC000000000000000000CC0C /* MongoDBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0B /* MongoDBService.swift */; };
-		CC000000000000000000CC0E /* MongoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0D /* MongoModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,12 +51,6 @@
 		AA000000000000000000002A /* BackgroundTasks.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = BackgroundTasks.framework; path = System/Library/Frameworks/BackgroundTasks.framework; sourceTree = SDKROOT; };
 		AA000000000000000000003F /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		AA0000000000000000000043 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
-		AA0000000000000000000045 /* Color+Almond.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Almond.swift"; sourceTree = "<group>"; };
-		CC000000000000000000CC05 /* APIRiskViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIRiskViewModel.swift; sourceTree = "<group>"; };
-		CC000000000000000000CC07 /* RiskDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiskDashboardView.swift; sourceTree = "<group>"; };
-		CC000000000000000000CC09 /* MongoDBConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoDBConfig.swift; sourceTree = "<group>"; };
-		CC000000000000000000CC0B /* MongoDBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoDBService.swift; sourceTree = "<group>"; };
-		CC000000000000000000CC0D /* MongoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -277,12 +265,6 @@
 				AA0000000000000000000039 /* APIClient.swift in Sources */,
 				AA000000000000000000003A /* APIModels.swift in Sources */,
 				AA0000000000000000000044 /* ProfileView.swift in Sources */,
-				AA0000000000000000000046 /* Color+Almond.swift in Sources */,
-				CC000000000000000000CC06 /* APIRiskViewModel.swift in Sources */,
-				CC000000000000000000CC08 /* RiskDashboardView.swift in Sources */,
-				CC000000000000000000CC0A /* MongoDBConfig.swift in Sources */,
-				CC000000000000000000CC0C /* MongoDBService.swift in Sources */,
-				CC000000000000000000CC0E /* MongoModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

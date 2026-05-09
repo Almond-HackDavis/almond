@@ -23,6 +23,7 @@ final class OnboardingViewModel: ObservableObject {
     func save() {
         guard let height = heightCm, let weight = weightKg else { return }
         let d = UserDefaults.standard
+        d.set(name,              forKey: "ob.name")
         d.set(age,               forKey: "ob.age")
         d.set(sex,               forKey: "ob.sex")
         d.set(height,            forKey: "ob.height_cm")

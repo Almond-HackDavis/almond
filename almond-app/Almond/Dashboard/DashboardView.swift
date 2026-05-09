@@ -16,6 +16,9 @@ struct DashboardView: View {
 
             SleepView(vm: vm)
                 .tabItem { Label("Sleep", systemImage: "moon.zzz") }
+
+            ProfileView()
+                .tabItem { Label("Profile", systemImage: "person.circle") }
         }
     }
 }
