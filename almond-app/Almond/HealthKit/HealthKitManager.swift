@@ -80,13 +80,13 @@ final class HealthKitManager {
         let now = Date()
         let start = Calendar.current.date(byAdding: .day, value: -days, to: now)!
 
-        async let rhr    = queryDailyQuantity(type: .restingHeartRate,       unit: .count().unitDivided(by: .minute()),   start: start, end: now)
-        async let hrv    = queryTimestampedQuantity(type: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli),     start: start, end: now)
-        async let vo2    = queryMostRecentQuantity(type: .vo2Max,            unit: HKUnit(from: "ml/kg·min"),             start: start, end: now)
-        async let steps  = queryDailyQuantity(type: .stepCount,              unit: .count(),                              start: start, end: now)
-        async let energy = queryDailyQuantity(type: .activeEnergyBurned,     unit: .kilocalorie(),                        start: start, end: now)
-        async let exer   = queryDailyQuantity(type: .appleExerciseTime,      unit: .minute(),                             start: start, end: now)
-        async let whr    = queryDailyQuantity(type: .walkingHeartRateAverage, unit: .count().unitDivided(by: .minute()),  start: start, end: now)
+        async let rhr    = queryDailyQuantity(type: .restingHeartRate,        unit: .count().unitDivided(by: .minute()),  options: .discreteAverage, start: start, end: now)
+        async let hrv    = queryTimestampedQuantity(type: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli),                               start: start, end: now)
+        async let vo2    = queryMostRecentQuantity(type: .vo2Max,             unit: HKUnit(from: "ml/kg·min"),                                      start: start, end: now)
+        async let steps  = queryDailyQuantity(type: .stepCount,               unit: .count(),                             options: .cumulativeSum,   start: start, end: now)
+        async let energy = queryDailyQuantity(type: .activeEnergyBurned,      unit: .kilocalorie(),                       options: .cumulativeSum,   start: start, end: now)
+        async let exer   = queryDailyQuantity(type: .appleExerciseTime,       unit: .minute(),                            options: .cumulativeSum,   start: start, end: now)
+        async let whr    = queryDailyQuantity(type: .walkingHeartRateAverage,  unit: .count().unitDivided(by: .minute()), options: .discreteAverage, start: start, end: now)
         async let temp   = queryWristTemp(start: start, end: now)
         async let sleep  = querySleepSummaries(start: start, end: now)
 
@@ -116,13 +116,13 @@ final class HealthKitManager {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
 
-        async let restingHR = queryDailyQuantity(type: .restingHeartRate, unit: .count().unitDivided(by: .minute()), start: windowStart, end: now)
+        async let restingHR = queryDailyQuantity(type: .restingHeartRate, unit: .count().unitDivided(by: .minute()), options: .discreteAverage, start: windowStart, end: now)
         async let hrv = queryTimestampedQuantity(type: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), start: windowStart, end: now)
         async let vo2 = queryMostRecentQuantity(type: .vo2Max, unit: HKUnit(from: "ml/kg·min"), start: windowStart, end: now)
-        async let steps = queryDailyQuantity(type: .stepCount, unit: .count(), start: windowStart, end: now)
-        async let exercise = queryDailyQuantity(type: .appleExerciseTime, unit: .minute(), start: windowStart, end: now)
-        async let energy = queryDailyQuantity(type: .activeEnergyBurned, unit: .kilocalorie(), start: windowStart, end: now)
-        async let walkingHR = queryDailyQuantity(type: .walkingHeartRateAverage, unit: .count().unitDivided(by: .minute()), start: windowStart, end: now)
+        async let steps = queryDailyQuantity(type: .stepCount, unit: .count(), options: .cumulativeSum, start: windowStart, end: now)
+        async let exercise = queryDailyQuantity(type: .appleExerciseTime, unit: .minute(), options: .cumulativeSum, start: windowStart, end: now)
+        async let energy = queryDailyQuantity(type: .activeEnergyBurned, unit: .kilocalorie(), options: .cumulativeSum, start: windowStart, end: now)
+        async let walkingHR = queryDailyQuantity(type: .walkingHeartRateAverage, unit: .count().unitDivided(by: .minute()), options: .discreteAverage, start: windowStart, end: now)
         async let sleep = querySleepSessions(start: windowStart, end: now)
         async let wristTemp = queryWristTemp(start: windowStart, end: now)
         async let afib = queryAfibDetected(start: windowStart, end: now)
@@ -168,6 +168,7 @@ final class HealthKitManager {
     private func queryDailyQuantity(
         type identifier: HKQuantityTypeIdentifier,
         unit: HKUnit,
+        options: HKStatisticsOptions,
         start: Date, end: Date
     ) async -> [DatedValue] {
         let quantityType = HKQuantityType(identifier)
@@ -181,7 +182,7 @@ final class HealthKitManager {
             let query = HKStatisticsCollectionQuery(
                 quantityType: quantityType,
                 quantitySamplePredicate: predicate,
-                options: .discreteAverage,
+                options: options,
                 anchorDate: anchor,
                 intervalComponents: interval
             )
@@ -189,7 +190,10 @@ final class HealthKitManager {
                 guard let results else { continuation.resume(returning: []); return }
                 var out: [DatedValue] = []
                 results.enumerateStatistics(from: start, to: end) { stat, _ in
-                    if let q = stat.averageQuantity() {
+                    let q = options.contains(.cumulativeSum)
+                        ? stat.sumQuantity()
+                        : stat.averageQuantity()
+                    if let q {
                         out.append(DatedValue(date: stat.startDate, value: q.doubleValue(for: unit)))
                     }
                 }
