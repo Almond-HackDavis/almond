@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "almond-ml"
+version = "0.1.0"
+description = "almond backend service — FastAPI + MongoDB. ML/Gemini live in a separate worker process out of scope for this repo."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "pydantic-settings>=2",
+    "pymongo>=4.13",
+    "dnspython>=2.6",  # Atlas SRV records; transitive of pymongo but pinned for clarity.
+    "beanie>=2.1",
+    "pyjwt[crypto]>=2.8",
+    "python-multipart",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "mongomock-motor",
+    "httpx",        # FastAPI TestClient backend
+    "cryptography", # for minting test RSA keys in Apple JWKS fixtures
+]
+
+[tool.setuptools]
+# Flat module layout per AGENTS.md mono-repo description.
+py-modules = ["main", "schemas", "db", "auth"]
+packages = ["routes"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q -ra"
+markers = [
+    "slow: marks tests that hit a real container or external service",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    # Beanie + pydantic v2 emit some PydanticDeprecatedSince20 noise on import.
+    "ignore::PendingDeprecationWarning",
+]

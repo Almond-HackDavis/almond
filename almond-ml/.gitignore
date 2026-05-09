@@ -1,0 +1,23 @@
+# Virtualenvs
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets
+.env
+.env.local
+*.p8
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
