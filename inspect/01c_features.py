@@ -20,19 +20,25 @@ mortality .dat files (from 1A). Produces:
       ends up protective. Fixed by `bmi_dev = |BMI − 22|`.
     * Sleep duration confounding: chronically ill subjects oversleep, so
       linear mean_sleep_min ends up risky. Fixed by `sleep_dev = |sleep − 450|`.
-    * Device wear-time confounding: in NHANES, mean_daily_mims is positively
-      correlated with mortality after controlling for age/sex/BMI because
-      wear-time confounds with frailty (older subjects wear longer). Even
-      strong regularization can't recover the causal "activity is protective"
-      direction from this data alone. We therefore drop MIMS from the Cox
-      model entirely and apply it as an `activity_bonus` post-hoc on top of
-      the vitality score (the same "augmentation" pattern AGENTS.md uses for
-      HR / HRV / VO2max). Validating this against held-out NHANES showed
-      identical C-index (0.8253 with MIMS vs 0.8253 without) — MIMS adds
-      zero discriminative information in this cohort.
+    * Activity / MIMS confounding cannot be fixed at the Cox level on this
+      dataset. We tried five engineering variants — raw MIMS, MIMS-per-million,
+      activity_rate (MIMS / wake-wear-min), age-stratified rate, inactivity
+      floor, log10(rate). Every variant produced a near-zero or wrong-signed
+      coefficient and **identical** C-index 0.825 — meaning the activity
+      signal in NHANES 2011-2014 with 138 events at 24 months is dominated
+      by age confounding (older subjects wore the monitor more, registered
+      higher-intensity uncoordinated movement, and had more events). The
+      papers that DO recover a protective MIMS effect (Saint-Maurice 2020,
+      Smirnova 2020) use 6+ year follow-up and 10×+ events.
+
+      Conclusion: **the Cox model takes 4 features (no activity), and
+      activity enters the displayed score via a literature-calibrated
+      `activity_bonus` heuristic in 02_gemini.py.** The bonus magnitude is
+      anchored to Saint-Maurice 2020's HR 0.65 for highest-vs-lowest MIMS
+      quintile, mapped to ~10 vitality points.
     * Collinearity in the variability features: ρ=0.70 between sd_daily_mims
-      and sd_sleep_min; ρ=−0.66 between mean_daily_mims and mean_wake_wear_min.
-      All four are dropped.
+      and sd_sleep_min — both are dropped (perverse signs, no useful info
+      after the J-shape transforms above).
 
   Final 4-feature trained model: age, sex_male, bmi_dev, sleep_dev.
   All inference code (02_gemini.py, 04_worker.py) must mirror this engineering.
@@ -85,12 +91,15 @@ FEATURES: tuple[str, ...] = (
 BMI_OPTIMUM: float = 22.0
 SLEEP_OPTIMUM_MIN: float = 450.0
 
-# MIMS is NOT in the trained model (see module docstring) but iOS / the
-# worker still sends it. The vitality scoring layer uses these constants
-# to compute an activity bonus on top of the Cox-derived raw risk.
-MIMS_SCALE: float = 1_000_000.0           # raw MIMS → millions
-MIMS_REFERENCE_M: float = 3.0             # population median ≈ 2.65, rounded
-MIMS_BONUS_RANGE_PT: float = 5.0          # ±5 vitality points at the asymptote
+# MIMS scaling for the post-Cox activity_bonus layer. Raw MIMS values are
+# in the millions; we divide by 1M before tanh to get reasonable curvature.
+MIMS_SCALE: float = 1_000_000.0
+MIMS_REFERENCE_M: float = 3.0             # cohort median (~2.65), rounded
+# ±10 pts at the asymptote, anchored to Saint-Maurice 2020's HR 0.65 for
+# highest-vs-lowest MIMS quintile (~35% mortality reduction). The Cox itself
+# can't honestly fit this from our 138-event subset — we use the published
+# effect size to set the bonus magnitude instead of learning it from data.
+MIMS_BONUS_RANGE_PT: float = 10.0
 
 HORIZON_MONTHS = 24
 
@@ -134,9 +143,10 @@ def build_features(cohort: pd.DataFrame, paxday: pd.DataFrame) -> pd.DataFrame:
     feats["bmi_dev"] = (feats["bmi"].astype(float) - BMI_OPTIMUM).abs()
     feats["sleep_dev"] = (feats["mean_sleep_min"].astype(float) - SLEEP_OPTIMUM_MIN).abs()
 
-    # Persist raw values + MIMS too so X_gh.csv stays self-describing for
-    # debugging and the activity_bonus layer can read it directly.
-    keep = ["SEQN", "cycle", "bmi", "mean_sleep_min", "mean_daily_mims", *FEATURES]
+    # Persist raw values too so X_gh.csv stays self-describing for debugging
+    # and the post-hoc activity_bonus layer can read them directly.
+    keep = ["SEQN", "cycle", "bmi", "mean_sleep_min", "mean_daily_mims",
+            "mean_wake_wear_min", *FEATURES]
     # De-dup in case bmi/mean_sleep_min are also in FEATURES historically.
     seen: set[str] = set()
     keep = [c for c in keep if not (c in seen or seen.add(c))]

@@ -74,10 +74,21 @@ FEATURES: tuple[str, ...] = (
 BMI_OPTIMUM: float = 22.0
 SLEEP_OPTIMUM_MIN: float = 450.0
 
-# MIMS is NOT in the Cox model. It enters vitality via activity_bonus.
+# MIMS is NOT in the Cox model — see 01c_features.py docstring. It enters
+# vitality via activity_bonus instead, with magnitude anchored to
+# Saint-Maurice 2020's HR 0.65 for highest-vs-lowest MIMS quintile
+# (~35% mortality reduction). Mapping:
+#
+#   highest-quintile  →  bonus ≈ +10 pts
+#   median            →  bonus =   0
+#   lowest-quintile   →  bonus ≈ −10 pts
+#
+# The bonus is the ONLY way activity affects the displayed score, so its
+# magnitude must matter — ±10 pts is the difference between "above-average"
+# and "well-above-average" vitality categories on a 0-100 scale.
 MIMS_SCALE: float = 1_000_000.0          # raw MIMS → millions
 MIMS_REFERENCE_M: float = 3.0            # cohort median (~2.65), rounded
-MIMS_BONUS_RANGE_PT: float = 5.0         # ±5 vitality pts at the asymptote
+MIMS_BONUS_RANGE_PT: float = 10.0        # ±10 vitality pts at the asymptote
 MIMS_BONUS_TIGHTNESS: float = 1.5        # tanh tightness — wider = gentler curve
 
 # Percentile lookup is bucketed by 5-yr age band × sex. Mirrors 05_percentiles.py.
@@ -103,20 +114,22 @@ def load_percentile_lookup() -> dict[str, list[float]]:
 
 
 def activity_bonus(mean_daily_mims: float) -> float:
-    """Activity bonus added to base vitality — keeps MIMS out of the Cox model.
+    """Activity bonus added to base vitality — only path activity affects score.
 
     Smooth curve via tanh:
 
         bonus = MIMS_BONUS_RANGE_PT × tanh((MIMS_M − MIMS_REFERENCE_M) / TIGHTNESS)
 
-    With reference 3.0 M and range ±5 pts:
+    With reference 3.0 M and range ±10 pts (anchored to Saint-Maurice 2020's
+    HR 0.65 for highest-vs-lowest MIMS quintile — ~35% mortality reduction):
 
-        MIMS_M = 5.5 (very active)  →  bonus ≈ +4.7 pts
-        MIMS_M = 3.0 (median)       →  bonus =   0.0 pts
-        MIMS_M = 1.5 (sedentary)    →  bonus ≈ −3.7 pts
-        MIMS_M = 0.5 (frail)        →  bonus ≈ −4.7 pts
+        MIMS_M = 5.5 (highest quintile)  →  bonus ≈ +9.5 pts
+        MIMS_M = 4.0 (above median)       →  bonus ≈ +6.1 pts
+        MIMS_M = 3.0 (median)             →  bonus =   0.0 pts
+        MIMS_M = 2.0 (below median)       →  bonus ≈ −6.1 pts
+        MIMS_M = 0.5 (lowest quintile)    →  bonus ≈ −9.5 pts
 
-    The asymptote prevents extreme values from blowing up the score.
+    The asymptote prevents outlier MIMS values from blowing up the score.
     """
     mims_M = float(mean_daily_mims) / MIMS_SCALE
     delta = (mims_M - MIMS_REFERENCE_M) / MIMS_BONUS_TIGHTNESS
