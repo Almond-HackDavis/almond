@@ -40,35 +40,6 @@ struct HealthSnapshot {
         guard !recent.isEmpty else { return nil }
         return recent.map(\.value).reduce(0, +) / Double(recent.count)
     }
-
-    // 0–100 composite cardiovascular score. Returns nil when no data available.
-    var cardiovascularScore: Int? {
-        var components: [Double] = []
-
-        // Resting HR: 40 bpm → 100 pts, 100 bpm → 0 pts
-        if let rhr = weekAvg(restingHR) {
-            components.append(max(0, min(100, (100 - rhr) / 60 * 100)))
-        }
-        // HRV SDNN: 20 ms → 0 pts, 80 ms → 100 pts
-        if let h = weekAvg(hrv) {
-            components.append(max(0, min(100, (h - 20) / 60 * 100)))
-        }
-        // VO₂ Max: 25 → 0 pts, 60 → 100 pts
-        if let v = vo2Max?.value {
-            components.append(max(0, min(100, (v - 25) / 35 * 100)))
-        }
-        // Daily steps 7-day avg: 0 → 0 pts, 10 000 → 100 pts
-        if let s = weekAvg(stepsDaily) {
-            components.append(max(0, min(100, s / 10_000 * 100)))
-        }
-        // Exercise min/day: 0 → 0 pts, 60 → 100 pts
-        if let e = weekAvg(exerciseMinutes) {
-            components.append(max(0, min(100, e / 60 * 100)))
-        }
-
-        guard !components.isEmpty else { return nil }
-        return Int(components.reduce(0, +) / Double(components.count))
-    }
 }
 
 // MARK: - Manager
@@ -125,13 +96,13 @@ final class HealthKitManager {
         let now = Date()
         let start = Calendar.current.date(byAdding: .day, value: -days, to: now)!
 
-        async let rhr    = queryDailyQuantity(type: .restingHeartRate,        unit: .count().unitDivided(by: .minute()),  options: .discreteAverage, start: start, end: now)
-        async let hrv    = queryTimestampedQuantity(type: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli),                               start: start, end: now)
-        async let vo2    = queryMostRecentQuantity(type: .vo2Max,             unit: HKUnit(from: "ml/kg·min"),                                      start: start, end: now)
-        async let steps  = queryDailyQuantity(type: .stepCount,               unit: .count(),                             options: .cumulativeSum,   start: start, end: now)
-        async let energy = queryDailyQuantity(type: .activeEnergyBurned,      unit: .kilocalorie(),                       options: .cumulativeSum,   start: start, end: now)
-        async let exer   = queryDailyQuantity(type: .appleExerciseTime,       unit: .minute(),                            options: .cumulativeSum,   start: start, end: now)
-        async let whr    = queryDailyQuantity(type: .walkingHeartRateAverage,  unit: .count().unitDivided(by: .minute()), options: .discreteAverage, start: start, end: now)
+        async let rhr    = queryDailyQuantity(type: .restingHeartRate,       unit: .count().unitDivided(by: .minute()),   start: start, end: now)
+        async let hrv    = queryTimestampedQuantity(type: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli),     start: start, end: now)
+        async let vo2    = queryMostRecentQuantity(type: .vo2Max,            unit: HKUnit(from: "ml/kg·min"),             start: start, end: now)
+        async let steps  = queryDailyQuantity(type: .stepCount,              unit: .count(),                              start: start, end: now)
+        async let energy = queryDailyQuantity(type: .activeEnergyBurned,     unit: .kilocalorie(),                        start: start, end: now)
+        async let exer   = queryDailyQuantity(type: .appleExerciseTime,      unit: .minute(),                             start: start, end: now)
+        async let whr    = queryDailyQuantity(type: .walkingHeartRateAverage, unit: .count().unitDivided(by: .minute()),  start: start, end: now)
         async let temp   = queryWristTemp(start: start, end: now)
         async let sleep  = querySleepSummaries(start: start, end: now)
 
@@ -153,15 +124,33 @@ final class HealthKitManager {
 
     // MARK: - API upload payload (backend path, kept for future use)
 
-    func buildUploadPayload() async throws -> HealthKitSamples {
+    func buildUploadPayload() async throws -> HealthKitUploadRequest {
         try await requestAuthorization()
 
         let now = Date()
         let windowStart = Calendar.current.date(byAdding: .day, value: -90, to: now)!
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
+
+        async let restingHR = queryDailyQuantity(type: .restingHeartRate, unit: .count().unitDivided(by: .minute()), start: windowStart, end: now)
+        async let hrv = queryTimestampedQuantity(type: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), start: windowStart, end: now)
+        async let vo2 = queryMostRecentQuantity(type: .vo2Max, unit: HKUnit(from: "ml/kg·min"), start: windowStart, end: now)
+        async let steps = queryDailyQuantity(type: .stepCount, unit: .count(), start: windowStart, end: now)
+        async let exercise = queryDailyQuantity(type: .appleExerciseTime, unit: .minute(), start: windowStart, end: now)
+        async let energy = queryDailyQuantity(type: .activeEnergyBurned, unit: .kilocalorie(), start: windowStart, end: now)
+        async let walkingHR = queryDailyQuantity(type: .walkingHeartRateAverage, unit: .count().unitDivided(by: .minute()), start: windowStart, end: now)
+        async let sleep = querySleepSessions(start: windowStart, end: now)
+        async let wristTemp = queryWristTemp(start: windowStart, end: now)
+        async let afib = queryAfibDetected(start: windowStart, end: now)
+
+        let (rhr, hrvSamples, vo2Result, stepSamples, exerciseSamples,
+             energySamples, whrSamples, sleepResult, tempResult, afibResult)
+            = try await (restingHR, hrv, vo2, steps, exercise, energy,
+                         walkingHR, sleep, wristTemp, afib)
+
         let dayFmt = DateFormatter()
         dayFmt.dateFormat = "yyyy-MM-dd"
+        dayFmt.timeZone = TimeZone(identifier: "UTC")!
 
         async let steps    = queryDailyQuantity(type: .stepCount,                unit: .count(),                             options: .cumulativeSum,   start: windowStart, end: now)
         async let energy   = queryDailyQuantity(type: .activeEnergyBurned,       unit: .kilocalorie(),                       options: .cumulativeSum,   start: windowStart, end: now)
@@ -300,10 +289,27 @@ final class HealthKitManager {
 
     private func makeSleepSession(from samples: [HKCategorySample], formatter: ISO8601DateFormatter) -> SleepSession? {
         guard let first = samples.first, let last = samples.last else { return nil }
+        var deepMin = 0, remMin = 0, coreMin = 0, awakeMin = 0, inBedMin = 0
+        for s in samples {
+            let dur = Int(s.endDate.timeIntervalSince(s.startDate) / 60)
+            switch HKCategoryValueSleepAnalysis(rawValue: s.value) {
+            case .asleepDeep:                          deepMin += dur
+            case .asleepREM:                           remMin  += dur
+            case .asleepCore, .asleepUnspecified:      coreMin += dur
+            case .awake:                               awakeMin += dur
+            case .inBed:                               inBedMin += dur
+            default: break
+            }
+        }
+        let totalSleep = deepMin + remMin + coreMin
+        let totalBed = max(inBedMin, totalSleep + awakeMin)
         let durationMin = Int(last.endDate.timeIntervalSince(first.startDate) / 60)
+        let efficiency = totalBed > 0 ? Double(totalSleep) / Double(totalBed) : 0
         return SleepSession(start: formatter.string(from: first.startDate),
                             end: formatter.string(from: last.endDate),
-                            durationMin: durationMin)
+                            durationMin: durationMin, efficiency: efficiency,
+                            stages: SleepStages(deepMin: deepMin, remMin: remMin,
+                                                coreMin: coreMin, awakeMin: awakeMin))
     }
 
     // MARK: - Sleep (display format)

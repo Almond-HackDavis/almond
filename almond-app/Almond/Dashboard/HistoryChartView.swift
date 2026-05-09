@@ -6,11 +6,11 @@ struct HistoryChartView: View {
 
     enum SeriesKey: String, CaseIterable, Identifiable {
         var id: String { rawValue }
-        case restingHR    = "Resting HR"
-        case hrv          = "HRV"
-        case steps        = "Steps"
+        case restingHR   = "Resting HR"
+        case hrv         = "HRV"
+        case steps       = "Steps"
         case activeEnergy = "Active Cal"
-        case exerciseMin  = "Exercise Min"
+        case exerciseMin = "Exercise Min"
     }
 
     @State private var selected: SeriesKey = .restingHR
@@ -23,7 +23,7 @@ struct HistoryChartView: View {
                         ForEach(SeriesKey.allCases) { key in
                             Button(key.rawValue) { selected = key }
                                 .buttonStyle(.bordered)
-                                .tint(selected == key ? Color.brandPrimary : Color.labelTertiary)
+                                .tint(selected == key ? .pink : .secondary)
                         }
                     }
                     .padding(.horizontal)
@@ -34,7 +34,6 @@ struct HistoryChartView: View {
                     if vm.isLoading && vm.snapshot == nil {
                         ProgressView("Loading trends…")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .tint(Color.brandPrimary)
                     } else if let snap = vm.snapshot {
                         chartContent(snap: snap)
                     } else {
@@ -62,17 +61,16 @@ struct HistoryChartView: View {
                 ForEach(points) { pt in
                     LineMark(x: .value("Date", pt.date, unit: .day),
                              y: .value(selected.rawValue, pt.value))
-                        .foregroundStyle(Color.chartSeries1)
+                        .foregroundStyle(.pink)
                     AreaMark(x: .value("Date", pt.date, unit: .day),
                              y: .value(selected.rawValue, pt.value))
-                        .foregroundStyle(Color.chartSeries1.opacity(0.12))
+                        .foregroundStyle(.pink.opacity(0.1))
                 }
             }
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day, count: 7)) { _ in
-                    AxisGridLine().foregroundStyle(Color.divider)
+                    AxisGridLine()
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day())
-                        .foregroundStyle(Color.labelSecondary)
                 }
             }
             .padding()
