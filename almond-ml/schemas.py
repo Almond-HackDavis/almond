@@ -36,16 +36,37 @@ class Onboarding(BaseModel):
 
 
 class Samples(BaseModel):
-    """HealthKit-derived per-day arrays. Inner shapes are dict[str, Any] —
+    """HealthKit-derived signals. Inner row shapes are dict[str, Any] —
     `ml.engineer_features` reads the keys it needs and ignores the rest.
+
+    Tier-1 (Cox features + activity bonus): steps_daily, active_energy_daily_kcal,
+        exercise_minutes_daily, sleep_sessions.
+
+    Tier-2 (augmentation, NOT in the Cox model — apply published-literature
+    multipliers post-hoc):
+      * resting_hr_daily        — Jensen 2013 (Eur Heart J).
+      * hrv_sdnn                — Hillebrand 2013 (Europace).
+      * vo2_max_latest          — FRIEND registry / Kaminsky 2013; also drives fitness_age.
+      * walking_hr_avg_daily    — secondary HR signal.
+
+    All Tier-2 fields are optional; the pipeline degrades gracefully if iOS
+    lacks any one (the contribution that signal would have made is omitted
+    from the average rather than zeroed).
     """
 
     model_config = ConfigDict(extra="allow")
 
+    # Tier-1
     steps_daily: list[dict[str, Any]] = Field(default_factory=list)
     active_energy_daily_kcal: list[dict[str, Any]] = Field(default_factory=list)
     exercise_minutes_daily: list[dict[str, Any]] = Field(default_factory=list)
     sleep_sessions: list[dict[str, Any]] = Field(default_factory=list)
+
+    # Tier-2 (HealthKit augmentation)
+    resting_hr_daily: list[dict[str, Any]] = Field(default_factory=list)
+    hrv_sdnn: list[dict[str, Any]] = Field(default_factory=list)
+    vo2_max_latest: dict[str, Any] | None = None
+    walking_hr_avg_daily: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class InputRequest(BaseModel):
@@ -82,6 +103,20 @@ class ModelMetadata(BaseModel):
     horizon_months: int
 
 
+class TopDriver(BaseModel):
+    """One contributor to the vitality score. iOS uses this to render
+    "what's driving your score" badges. Each driver has a name (e.g.
+    `resting_hr`), a human-readable label, and a signed contribution in
+    vitality points. Positive = lifting your score, negative = dragging it.
+    """
+
+    feature: str
+    human_label: str
+    value: float                 # the raw signal (e.g. 58.0 bpm)
+    contribution_pts: float      # signed vitality-point contribution
+    direction: Literal["better", "worse"]
+
+
 class OutputDocument(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -90,6 +125,7 @@ class OutputDocument(BaseModel):
     input_uploaded_at: datetime
 
     scores: dict[str, dict[str, Any]]
+    top_drivers: list[TopDriver] = Field(default_factory=list)
     gemma_summary: str
     disclaimer: str
     model_metadata: ModelMetadata

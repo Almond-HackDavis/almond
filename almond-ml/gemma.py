@@ -18,14 +18,22 @@ from typing import Optional
 
 log = logging.getLogger("almond.gemma")
 
-# Google retired the gemma-3 family on the public API; the only Gemma 3-class
-# models exposed via google-genai are now Gemma 4. Probed available models:
-#   gemma-4-31b-it    (dense 31B — similar size + behavior to old gemma-3-27b-it)
-#   gemma-4-26b-a4b-it (MoE, ~26B effective)
-# We default to the dense 31B because its outputs are slightly more on-prompt
-# for short structured-summary tasks like ours. Override via GEMMA_MODEL env
-# var if needed.
+# Preferred model. Probed available models on the free AI Studio key:
+#   gemma-4-31b-it      (dense 31B — what we default to)
+#   gemma-4-26b-a4b-it  (MoE, ~26B effective — our first backup)
+#   gemini-2.5-flash    (not Gemma but rock-solid — our last-resort LLM)
+#
+# Free-tier Gemma 4 flaps with 500 INTERNAL every few minutes. When the
+# preferred model 500's on every retry, we walk down the chain below before
+# giving up and serving the deterministic fallback. Each fallback is also
+# recorded in `model_metadata.llm_model` so iOS (and Deniz) can see which
+# model actually produced the summary.
 DEFAULT_MODEL = "gemma-4-31b-it"
+FALLBACK_MODEL_CHAIN: tuple[str, ...] = (
+    "gemma-4-31b-it",
+    "gemma-4-26b-a4b-it",
+    "gemini-2.5-flash",
+)
 PROMPT_TEMPLATE_VERSION = "2.0.0"
 
 DISCLAIMER = (
@@ -111,35 +119,54 @@ def summarize(
         max_output_tokens=300,
     )
 
-    log.info("calling Gemma model=%s prompt_chars=%d", model, len(user_prompt))
+    # If the caller explicitly pinned a model via argument or env, honor it
+    # without walking the chain. Otherwise: try preferred → fallback → fallback.
+    env_model = os.environ.get("GEMMA_MODEL")
+    if model:
+        chain: tuple[str, ...] = (model,)
+    elif env_model:
+        chain = (env_model,)
+    else:
+        chain = FALLBACK_MODEL_CHAIN
 
-    # Google's free-tier Gemma endpoint flaps with 500 INTERNAL fairly often.
-    # Retry transient 5xx up to 2 times with a short backoff. We do NOT retry
-    # 4xx (rate limit, malformed prompt) — those won't get better.
     import time
     last_exc: Exception | None = None
-    for attempt in range(3):
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=user_prompt,
-                config=config,
-            )
-            text = (response.text or "").strip()
-            if not text:
-                raise RuntimeError("Gemma returned an empty response")
-            if attempt > 0:
-                log.info("Gemma succeeded on retry attempt=%d", attempt + 1)
-            return GemmaResult(summary=text, model=model)
-        except Exception as exc:
-            last_exc = exc
-            msg = str(exc)
-            transient = ("500" in msg) or ("503" in msg) or ("INTERNAL" in msg) or ("UNAVAILABLE" in msg)
-            if not transient or attempt == 2:
-                break
-            sleep_s = 0.6 * (attempt + 1)
-            log.warning("Gemma transient error attempt=%d (%s); retrying in %.1fs",
-                        attempt + 1, msg[:80], sleep_s)
-            time.sleep(sleep_s)
+    for tier, candidate in enumerate(chain):
+        log.info("calling LLM model=%s prompt_chars=%d (chain tier %d/%d)",
+                 candidate, len(user_prompt), tier + 1, len(chain))
+        # Per-model: try + 2 retries on transient 5xx.
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=candidate,
+                    contents=user_prompt,
+                    config=config,
+                )
+                text = (response.text or "").strip()
+                if not text:
+                    raise RuntimeError("LLM returned an empty response")
+                if attempt > 0 or tier > 0:
+                    log.info("LLM succeeded model=%s attempt=%d tier=%d",
+                             candidate, attempt + 1, tier + 1)
+                return GemmaResult(summary=text, model=candidate)
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc)
+                transient = ("500" in msg) or ("503" in msg) or ("INTERNAL" in msg) or ("UNAVAILABLE" in msg)
+                if not transient:
+                    # Hard error (404, 400, auth) — don't retry, don't fall through.
+                    raise
+                if attempt == 2:
+                    # Exhausted retries on this model — fall through to next tier.
+                    log.warning("model=%s exhausted %d retries on transient 5xx; "
+                                "falling through to next chain tier",
+                                candidate, attempt + 1)
+                    break
+                sleep_s = 0.6 * (attempt + 1)
+                log.warning("model=%s transient attempt=%d (%s); retrying in %.1fs",
+                            candidate, attempt + 1, msg[:80], sleep_s)
+                time.sleep(sleep_s)
 
+    # All tiers exhausted — surface the last exception so the route handler's
+    # `except Exception` catches it and emits the deterministic fallback.
     raise last_exc  # type: ignore[misc]

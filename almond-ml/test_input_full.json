@@ -1,0 +1,47 @@
+{
+  "onboarding": {
+    "age": 35,
+    "sex": "M",
+    "height_cm": 180.0,
+    "weight_kg": 78.0,
+    "smoking": false,
+    "diabetes": false,
+    "family_history_cvd": false,
+    "on_bp_medication": false,
+    "race_ethnicity": null,
+    "systolic_bp": null,
+    "total_cholesterol": null,
+    "hdl_cholesterol": null
+  },
+  "samples": {
+    "steps_daily": [
+      {"date": "2026-05-07", "count": 10300},
+      {"date": "2026-05-08", "count": 9050}
+    ],
+    "active_energy_daily_kcal": [
+      {"date": "2026-05-07", "kcal": 540},
+      {"date": "2026-05-08", "kcal": 470}
+    ],
+    "exercise_minutes_daily": [
+      {"date": "2026-05-07", "minutes": 42},
+      {"date": "2026-05-08", "minutes": 35}
+    ],
+    "sleep_sessions": [
+      {"start": "2026-05-06T23:10:00Z", "end": "2026-05-07T07:00:00Z", "duration_min": 470},
+      {"start": "2026-05-07T23:25:00Z", "end": "2026-05-08T07:05:00Z", "duration_min": 460}
+    ],
+    "resting_hr_daily": [
+      {"date": "2026-05-07", "bpm": 58},
+      {"date": "2026-05-08", "bpm": 60}
+    ],
+    "hrv_sdnn": [
+      {"timestamp": "2026-05-07T03:30:00Z", "ms": 68},
+      {"timestamp": "2026-05-08T03:14:00Z", "ms": 72}
+    ],
+    "vo2_max_latest": {"value": 47.5, "measured_at": "2026-05-05T11:00:00Z"},
+    "walking_hr_avg_daily": [
+      {"date": "2026-05-07", "bpm": 98},
+      {"date": "2026-05-08", "bpm": 102}
+    ]
+  }
+}

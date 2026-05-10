@@ -64,6 +64,7 @@ class OutputRecord(Document):
     input_uploaded_at: datetime
 
     scores: dict[str, dict[str, Any]]
+    top_drivers: list[dict[str, Any]] = Field(default_factory=list)
     gemma_summary: str
     disclaimer: str
     model_metadata: dict[str, Any]

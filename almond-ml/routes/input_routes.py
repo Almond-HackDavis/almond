@@ -86,11 +86,17 @@ async def submit_input(req: InputRequest) -> OutputDocument:
         summary_text = _fallback_summary(vitality, feats)
         llm_model_used = "fallback-deterministic-v0"
 
-    # 4. Build the output document.
+    # 4. Build the output document. Per-score dicts have different shapes —
+    #    vitality has `max`, mortality has `ci_low`/`ci_high` (nullable),
+    #    fitness_age has chronological_age + delta and is omitted when iOS
+    #    didn't send VO2 max.
     scores: dict[str, dict[str, Any]] = {
         "vitality_score":       {"value": round(vitality, 1), "max": 100.0},
         "nhanes_mortality_2yr": {"value": round(raw_risk, 4), "ci_low": None, "ci_high": None},
     }
+    if pipe.get("fitness_age") is not None:
+        scores["fitness_age"] = pipe["fitness_age"]
+
     metadata = ModelMetadata(
         model_id=ml.MODEL_ID,
         prompt_template_version=prompt_template_version,
@@ -102,6 +108,7 @@ async def submit_input(req: InputRequest) -> OutputDocument:
         "computed_at": utcnow(),
         "input_uploaded_at": received_at,
         "scores": scores,
+        "top_drivers": pipe.get("top_drivers", []),
         "gemma_summary": summary_text,
         "disclaimer": gemma.DISCLAIMER,
         "model_metadata": metadata.model_dump(),
@@ -195,6 +202,7 @@ async def _upsert_output(out: OutputDocument) -> None:
             "computed_at": out.computed_at,
             "input_uploaded_at": out.input_uploaded_at,
             "scores": out.scores,
+            "top_drivers": [d.model_dump() for d in out.top_drivers],
             "gemma_summary": out.gemma_summary,
             "disclaimer": out.disclaimer,
             "model_metadata": out.model_metadata.model_dump(),
@@ -209,6 +217,7 @@ def _record_to_response(rec: OutputRecord) -> OutputDocument:
         "computed_at": rec.computed_at,
         "input_uploaded_at": rec.input_uploaded_at,
         "scores": rec.scores or {},
+        "top_drivers": getattr(rec, "top_drivers", None) or [],
         "gemma_summary": rec.gemma_summary,
         "disclaimer": rec.disclaimer,
         "model_metadata": rec.model_metadata,
