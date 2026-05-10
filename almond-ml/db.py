@@ -1,15 +1,19 @@
 """MongoDB layer.
 
-Two collections, both singleton:
+Two append-only collections:
 
-  * `input`   — the latest POST /input payload, _id="current", upserted on
-                every request.
-  * `output`  — the latest pipeline result, _id="current", upserted right
-                after Cox + Gemma run.
+  * `input`   — every POST /input payload, one doc per request.
+                _id is a UUID hex string, indexed on `received_at` desc.
+  * `output`  — every Cox + Gemma result, one doc per request.
+                _id is a UUID hex string. Each row carries `input_id`
+                pointing back at the input that produced it. Indexed on
+                `computed_at` desc so `GET /output` can read the latest
+                with a single key lookup.
 
-iOS reads `output._id="current"` to get the latest dashboard. There is no
-history collection, no append-only audit log. If you want history later
-add a separate collection (e.g. `output_history`) — don't reuse these.
+iOS reads `GET /output` for the latest single-row dashboard tile (sorted
+by `computed_at desc`). History is what powers a temporal dashboard:
+vitality_score over time, fitness_age over time, top_drivers churn
+between sessions. Older data is never overwritten.
 
 Uses pymongo's `AsyncMongoClient` (motor was deprecated 14 May 2026) and
 Beanie 2.x for document mapping.
@@ -41,11 +45,7 @@ def new_id() -> str:
 
 
 class InputRecord(Document):
-    """The latest POST /input payload. Singleton; _id is always "current".
-
-    Beanie's default `id` factory generates UUIDs; we override to "current"
-    in the route handler's upsert so the document is overwritten in place.
-    """
+    """One POST /input payload. Append-only; UUID hex ids."""
 
     id: str = Field(default_factory=new_id)
     received_at: datetime = Field(default_factory=utcnow)
@@ -54,12 +54,24 @@ class InputRecord(Document):
 
     class Settings:
         name = "input"
+        indexes = [
+            pymongo.IndexModel(
+                [("received_at", pymongo.DESCENDING)],
+                name="received_at_desc",
+            ),
+        ]
 
 
 class OutputRecord(Document):
-    """The latest Cox + Gemma prediction. Singleton; _id is always "current"."""
+    """One Cox + Gemma prediction. Append-only; UUID hex ids.
+
+    `input_id` points back at the InputRecord that produced this output —
+    useful for debugging ("which exact payload yielded this score") and
+    for the temporal dashboard's drill-down.
+    """
 
     id: str = Field(default_factory=new_id)
+    input_id: str
     computed_at: datetime = Field(default_factory=utcnow)
     input_uploaded_at: datetime
 
@@ -71,6 +83,13 @@ class OutputRecord(Document):
 
     class Settings:
         name = "output"
+        indexes = [
+            pymongo.IndexModel(
+                [("computed_at", pymongo.DESCENDING)],
+                name="computed_at_desc",
+            ),
+            pymongo.IndexModel("input_id", name="input_id"),
+        ]
 
 
 DOCUMENT_MODELS: list[type[Document]] = [InputRecord, OutputRecord]

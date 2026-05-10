@@ -1,9 +1,21 @@
-"""End-to-end tests for POST /input + GET /output."""
+"""End-to-end tests for POST /input + GET /output (append-only history).
+
+The `input` and `output` collections are append-only — every POST /input
+inserts new docs with UUID hex `_id`s and never overwrites existing rows.
+`GET /output` returns the most recent output (sorted by `computed_at desc`).
+Each output row carries `input_id` linking back at the input that
+produced it.
+"""
 from __future__ import annotations
+
+import asyncio
+import re
 
 import pytest
 
 pytestmark = pytest.mark.asyncio
+
+UUID_HEX_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 class TestPostInput:
@@ -12,7 +24,9 @@ class TestPostInput:
         assert resp.status_code == 200, resp.text
         body = resp.json()
 
-        assert body["_id"] == "current"
+        # Every POST yields a fresh UUID hex `_id`, never the legacy "current".
+        assert UUID_HEX_RE.match(body["_id"]), f"unexpected id shape: {body['_id']!r}"
+        assert UUID_HEX_RE.match(body["input_id"]), "output should reference its input"
         assert "computed_at" in body and "input_uploaded_at" in body
         assert "scores" in body
         assert "vitality_score" in body["scores"]
@@ -36,19 +50,26 @@ class TestPostInput:
         assert meta["horizon_months"] == 24
         assert meta["prompt_template_version"]
 
-    async def test_persists_singleton_current_doc(self, client, valid_input_payload):
+    async def test_get_output_returns_latest_post(self, client, valid_input_payload):
         first = await client.post("/input", json=valid_input_payload)
         assert first.status_code == 200
 
         get_after = await client.get("/output")
         assert get_after.status_code == 200
         get_body = get_after.json()
-        assert get_body["_id"] == "current"
-        assert get_body["scores"]["vitality_score"]["value"] == first.json()["scores"]["vitality_score"]["value"]
+        # GET /output returns the SAME row that the POST just wrote.
+        assert get_body["_id"] == first.json()["_id"]
+        assert (
+            get_body["scores"]["vitality_score"]["value"]
+            == first.json()["scores"]["vitality_score"]["value"]
+        )
 
-    async def test_second_input_overwrites_current(self, client, valid_input_payload):
+    async def test_second_input_does_not_overwrite_first(self, client, valid_input_payload):
         first = await client.post("/input", json=valid_input_payload)
         assert first.status_code == 200
+
+        # Force monotonic `computed_at` across the burst — see comment below.
+        await asyncio.sleep(0.005)
 
         # Second submission with a younger user → expect different scores.
         second_payload = {**valid_input_payload}
@@ -56,12 +77,15 @@ class TestPostInput:
         second = await client.post("/input", json=second_payload)
         assert second.status_code == 200
 
-        # /output reads the latest.
+        # Distinct UUIDs — append-only, never overwrites.
+        assert first.json()["_id"] != second.json()["_id"]
+        assert first.json()["input_id"] != second.json()["input_id"]
+
+        # /output reads the latest by computed_at desc.
         latest = await client.get("/output")
         assert latest.status_code == 200
         latest_body = latest.json()
-
-        # Younger user → lower mortality risk → likely higher vitality.
+        assert latest_body["_id"] == second.json()["_id"]
         assert (
             latest_body["scores"]["vitality_score"]["value"]
             >= first.json()["scores"]["vitality_score"]["value"] - 0.5
@@ -95,24 +119,33 @@ class TestPostInput:
         body = resp.json()
         assert 0.0 <= body["scores"]["vitality_score"]["value"] <= 100.0
 
-    async def test_singleton_only_no_history_copies(self, client, valid_input_payload):
-        """Both `input` and `output` are SINGLETON collections.
-        No matter how many POST /input calls fire, exactly one row each.
-        """
+    async def test_append_only_three_posts_three_rows(self, client, valid_input_payload):
+        """Append-only invariant: 3 POSTs → 3 input rows AND 3 output rows,
+        each with a distinct UUID id and `output.input_id` pointing at the
+        matching input row."""
         from db import InputRecord, OutputRecord
 
-        await client.post("/input", json=valid_input_payload)
-        await client.post("/input", json=valid_input_payload)
-        await client.post("/input", json=valid_input_payload)
+        for _ in range(3):
+            resp = await client.post("/input", json=valid_input_payload)
+            assert resp.status_code == 200
 
         all_inputs = await InputRecord.find_all().to_list()
         all_outputs = await OutputRecord.find_all().to_list()
 
-        assert len(all_inputs) == 1
-        assert all_inputs[0].id == "current"
+        assert len(all_inputs) == 3
+        assert len(all_outputs) == 3
 
-        assert len(all_outputs) == 1
-        assert all_outputs[0].id == "current"
+        # All ids are distinct UUID hex strings, never "current".
+        input_ids = {rec.id for rec in all_inputs}
+        output_ids = {rec.id for rec in all_outputs}
+        assert "current" not in input_ids and "current" not in output_ids
+        assert all(UUID_HEX_RE.match(i) for i in input_ids)
+        assert all(UUID_HEX_RE.match(i) for i in output_ids)
+        assert len(input_ids) == 3 and len(output_ids) == 3
+
+        # FK linkage — every output.input_id must refer to an existing input row.
+        for rec in all_outputs:
+            assert rec.input_id in input_ids
 
 
 class TestGetOutput:
@@ -122,10 +155,11 @@ class TestGetOutput:
         assert resp.json()["error"]["code"] == "no_output_yet"
 
     async def test_200_after_post_input(self, client, valid_input_payload):
-        await client.post("/input", json=valid_input_payload)
+        post = await client.post("/input", json=valid_input_payload)
         resp = await client.get("/output")
         assert resp.status_code == 200
-        assert resp.json()["_id"] == "current"
+        # GET /output returns the same UUID `_id` as the POST that produced it.
+        assert resp.json()["_id"] == post.json()["_id"]
 
 
 class TestHealthz:

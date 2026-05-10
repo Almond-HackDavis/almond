@@ -123,6 +123,7 @@ class OutputDocument(BaseModel):
     id: str = Field(..., alias="_id")
     computed_at: datetime
     input_uploaded_at: datetime
+    input_id: str | None = None
 
     scores: dict[str, dict[str, Any]]
     top_drivers: list[TopDriver] = Field(default_factory=list)
