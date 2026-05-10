@@ -153,30 +153,13 @@ final class HealthKitManager {
 
     // MARK: - API upload payload (backend path, kept for future use)
 
-    func buildUploadPayload() async throws -> HealthKitUploadRequest {
+    func buildUploadPayload() async throws -> HealthKitSamples {
         try await requestAuthorization()
 
         let now = Date()
         let windowStart = Calendar.current.date(byAdding: .day, value: -90, to: now)!
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-
-        async let restingHR = queryDailyQuantity(type: .restingHeartRate, unit: .count().unitDivided(by: .minute()), options: .discreteAverage, start: windowStart, end: now)
-        async let hrv = queryTimestampedQuantity(type: .heartRateVariabilitySDNN, unit: .secondUnit(with: .milli), start: windowStart, end: now)
-        async let vo2 = queryMostRecentQuantity(type: .vo2Max, unit: HKUnit(from: "ml/kg·min"), start: windowStart, end: now)
-        async let steps = queryDailyQuantity(type: .stepCount, unit: .count(), options: .cumulativeSum, start: windowStart, end: now)
-        async let exercise = queryDailyQuantity(type: .appleExerciseTime, unit: .minute(), options: .cumulativeSum, start: windowStart, end: now)
-        async let energy = queryDailyQuantity(type: .activeEnergyBurned, unit: .kilocalorie(), options: .cumulativeSum, start: windowStart, end: now)
-        async let walkingHR = queryDailyQuantity(type: .walkingHeartRateAverage, unit: .count().unitDivided(by: .minute()), options: .discreteAverage, start: windowStart, end: now)
-        async let sleep = querySleepSessions(start: windowStart, end: now)
-        async let wristTemp = queryWristTemp(start: windowStart, end: now)
-        async let afib = queryAfibDetected(start: windowStart, end: now)
-
-        let (rhr, hrvSamples, vo2Result, stepSamples, exerciseSamples,
-             energySamples, whrSamples, sleepResult, tempResult, afibResult)
-            = try await (restingHR, hrv, vo2, steps, exercise, energy,
-                         walkingHR, sleep, wristTemp, afib)
-
         let dayFmt = DateFormatter()
         dayFmt.dateFormat = "yyyy-MM-dd"
 
@@ -317,27 +300,10 @@ final class HealthKitManager {
 
     private func makeSleepSession(from samples: [HKCategorySample], formatter: ISO8601DateFormatter) -> SleepSession? {
         guard let first = samples.first, let last = samples.last else { return nil }
-        var deepMin = 0, remMin = 0, coreMin = 0, awakeMin = 0, inBedMin = 0
-        for s in samples {
-            let dur = Int(s.endDate.timeIntervalSince(s.startDate) / 60)
-            switch HKCategoryValueSleepAnalysis(rawValue: s.value) {
-            case .asleepDeep:                          deepMin += dur
-            case .asleepREM:                           remMin  += dur
-            case .asleepCore, .asleepUnspecified:      coreMin += dur
-            case .awake:                               awakeMin += dur
-            case .inBed:                               inBedMin += dur
-            default: break
-            }
-        }
-        let totalSleep = deepMin + remMin + coreMin
-        let totalBed = max(inBedMin, totalSleep + awakeMin)
         let durationMin = Int(last.endDate.timeIntervalSince(first.startDate) / 60)
-        let efficiency = totalBed > 0 ? Double(totalSleep) / Double(totalBed) : 0
         return SleepSession(start: formatter.string(from: first.startDate),
                             end: formatter.string(from: last.endDate),
-                            durationMin: durationMin, efficiency: efficiency,
-                            stages: SleepStages(deepMin: deepMin, remMin: remMin,
-                                                coreMin: coreMin, awakeMin: awakeMin))
+                            durationMin: durationMin)
     }
 
     // MARK: - Sleep (display format)

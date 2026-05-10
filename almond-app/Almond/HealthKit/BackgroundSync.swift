@@ -27,8 +27,8 @@ enum BackgroundSync {
         schedule()
         let syncTask = Task {
             do {
-                let payload = try await HealthKitManager().buildUploadPayload()
-                _ = try await APIClient.shared.submitInput(healthKit: payload)
+                let samples = try await HealthKitManager().buildUploadPayload()
+                _ = try await APIClient.shared.submitInput(samples: samples)
                 // Fire-and-forget — result will be visible next time the app opens
                 task.setTaskCompleted(success: true)
             } catch {

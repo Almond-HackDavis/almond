@@ -29,8 +29,8 @@ final class APIRiskViewModel: ObservableObject {
         phase = .uploading
 
         do {
-            let payload = try await hk.buildUploadPayload()
-            let output = try await APIClient.shared.submitInput(healthKit: payload)
+            let samples = try await hk.buildUploadPayload()
+            let output = try await APIClient.shared.submitInput(samples: samples)
             phase = .done(output)
         } catch {
             phase = .failed(error.localizedDescription)

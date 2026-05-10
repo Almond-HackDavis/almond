@@ -3,12 +3,8 @@ import Foundation
 // MARK: - Bridge API  (POST /input → poll GET /output/{input_id})
 
 struct BridgeInputRequest: Encodable {
-    let userId: String
     let onboarding: OnboardingPayload
     let samples: HealthKitSamples
-    enum CodingKeys: String, CodingKey {
-        case userId = "user_id"; case onboarding, samples
-    }
 }
 
 struct OnboardingPayload: Encodable {
@@ -55,33 +51,20 @@ struct BridgeScore: Decodable {
 struct BridgeScores: Decodable {
     let vitalityScore: BridgeScore?
     let nhanesMortality2yr: BridgeScore?
+    let fitnessAge: FitnessAge?
     enum CodingKeys: String, CodingKey {
         case vitalityScore = "vitality_score"
         case nhanesMortality2yr = "nhanes_mortality_2yr"
+        case fitnessAge = "fitness_age"
     }
 }
 
-struct BridgeOutput: Decodable {
-    let scores: BridgeScores
-    let gemmaSummary: String?
-    let disclaimer: String?
+struct FitnessAge: Decodable {
+    let value: Double
+    let chronologicalAge: Int
+    let delta: Double
     enum CodingKeys: String, CodingKey {
-        case scores
-        case gemmaSummary = "gemma_summary"
-        case disclaimer
-    }
-}
-
-// MARK: - HealthKit samples (sent as `samples` inside BridgeInputRequest)
-
-struct HealthKitUploadRequest: Encodable {
-    let uploadedAt: String
-    let windowStart: String
-    let windowEnd: String
-    let samples: HealthKitSamples
-    enum CodingKeys: String, CodingKey {
-        case uploadedAt = "uploaded_at"; case windowStart = "window_start"
-        case windowEnd = "window_end"; case samples
+        case value; case chronologicalAge = "chronological_age"; case delta
     }
 }
 
@@ -126,45 +109,30 @@ struct HealthKitSamples: Encodable {
     let hrvSdnn: [HRVSample]
     let vo2MaxLatest: VO2MaxSample?
     let walkingHrAvgDaily: [WalkingHRSample]
-    let afibDetected: Bool
-    let afibEpisodes: [String]
     enum CodingKeys: String, CodingKey {
-        case restingHrDaily = "resting_hr_daily"; case hrvSdnn = "hrv_sdnn"
-        case vo2MaxLatest = "vo2_max_latest"; case stepsDaily = "steps_daily"
-        case exerciseMinutesDaily = "exercise_minutes_daily"
+        case stepsDaily = "steps_daily"
         case activeEnergyDailyKcal = "active_energy_daily_kcal"
-        case sleepSessions = "sleep_sessions"; case wristTempNightly = "wrist_temp_nightly"
+        case exerciseMinutesDaily = "exercise_minutes_daily"
+        case sleepSessions = "sleep_sessions"
+        case restingHrDaily = "resting_hr_daily"
+        case hrvSdnn = "hrv_sdnn"
+        case vo2MaxLatest = "vo2_max_latest"
         case walkingHrAvgDaily = "walking_hr_avg_daily"
-        case afibDetected = "afib_detected"; case afibEpisodes = "afib_episodes"
     }
 }
 
+struct StepsSample: Encodable { let date: String; let count: Int }
+struct EnergySample: Encodable { let date: String; let kcal: Int }
+struct ExerciseSample: Encodable { let date: String; let minutes: Int }
+struct SleepSession: Encodable {
+    let start: String; let end: String; let durationMin: Int
+    enum CodingKeys: String, CodingKey { case start, end; case durationMin = "duration_min" }
+}
 struct RestingHRSample: Encodable { let date: String; let bpm: Int }
 struct HRVSample: Encodable { let timestamp: String; let ms: Double }
 struct VO2MaxSample: Encodable {
     let value: Double; let measuredAt: String
     enum CodingKeys: String, CodingKey { case value; case measuredAt = "measured_at" }
-}
-struct StepsSample: Encodable { let date: String; let count: Int }
-struct ExerciseSample: Encodable { let date: String; let minutes: Int }
-struct EnergySample: Encodable { let date: String; let kcal: Int }
-struct SleepSession: Encodable {
-    let start: String; let end: String; let durationMin: Int
-    let efficiency: Double; let stages: SleepStages
-    enum CodingKeys: String, CodingKey {
-        case start, end, efficiency, stages; case durationMin = "duration_min"
-    }
-}
-struct SleepStages: Encodable {
-    let deepMin: Int; let remMin: Int; let coreMin: Int; let awakeMin: Int
-    enum CodingKeys: String, CodingKey {
-        case deepMin = "deep_min"; case remMin = "rem_min"
-        case coreMin = "core_min"; case awakeMin = "awake_min"
-    }
-}
-struct WristTempSample: Encodable {
-    let date: String; let deltaC: Double
-    enum CodingKeys: String, CodingKey { case date; case deltaC = "delta_c" }
 }
 struct WalkingHRSample: Encodable { let date: String; let bpm: Int }
 
