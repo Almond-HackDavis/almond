@@ -1,5 +1,6 @@
 """POST /input — sync Cox + Gemma pipeline (append-only).
 GET  /output — read the most recently computed output document.
+GET  /history?limit=N — read the N most recent outputs in newest-first order.
 
 Flow on every POST /input:
 
@@ -28,7 +29,7 @@ from typing import Any
 
 import numpy as np
 import pymongo
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 import gemma
 import ml
@@ -38,6 +39,9 @@ from schemas import InputRequest, ModelMetadata, OutputDocument
 log = logging.getLogger("almond.routes.input")
 
 router = APIRouter(tags=["input"])
+
+# Cap on /history?limit= to avoid pulling thousands of docs at once.
+HISTORY_MAX_LIMIT: int = 200
 
 
 # ── Handlers ────────────────────────────────────────────────────────────────
@@ -98,6 +102,46 @@ async def submit_input(req: InputRequest) -> OutputDocument:
     if pipe.get("fitness_age") is not None:
         scores["fitness_age"] = pipe["fitness_age"]
 
+    # Surface the four clinical risk equations alongside the Cox output.
+    # `applicable=False` means the equation ran in deep partial mode (or
+    # outside its published age range) and was NOT folded into vitality;
+    # iOS / dashboard render an "Inactive" pill in that case.
+    eq_ascvd  = feats.get("_eq_ascvd_risk_10yr")
+    eq_fram   = feats.get("_eq_framingham_risk_10yr")
+    eq_findr  = feats.get("_eq_findrisc")
+    eq_le8    = feats.get("_eq_le8")
+    if eq_ascvd is not None:
+        scores["ascvd_10yr"] = {
+            "value": round(eq_ascvd, 4),
+            "horizon_months": 120,
+            "applicable": True,
+        }
+    if eq_fram is not None:
+        scores["framingham_10yr"] = {
+            "value": round(eq_fram, 4),
+            "horizon_months": 120,
+            "applicable": True,
+        }
+    if isinstance(eq_findr, dict):
+        scores["findrisc_10yr"] = {
+            "value": round(float(eq_findr["risk_10yr"]), 4),
+            "score": int(eq_findr["score"]),
+            "mode": eq_findr["mode"],
+            "missing": list(eq_findr.get("missing", [])),
+            "coverage": round(float(eq_findr.get("coverage", 0.0)), 3),
+            "horizon_months": 120,
+            "applicable": float(eq_findr.get("coverage", 0.0)) >= ml.FINDRISC_MIN_COVERAGE,
+        }
+    if isinstance(eq_le8, dict):
+        scores["le8"] = {
+            "value": round(float(eq_le8["score"]), 1),
+            "max": 100.0,
+            "mode": eq_le8["mode"],
+            "n_scoreable": int(eq_le8.get("n_scoreable", 0)),
+            "coverage": round(float(eq_le8.get("coverage", 0.0)), 3),
+            "applicable": float(eq_le8.get("coverage", 0.0)) >= ml.LE8_MIN_COVERAGE,
+        }
+
     metadata = ModelMetadata(
         model_id=ml.MODEL_ID,
         prompt_template_version=prompt_template_version,
@@ -149,6 +193,27 @@ async def get_current_output() -> OutputDocument:
             },
         )
     return _record_to_response(doc)
+
+
+@router.get(
+    "/history",
+    response_model=list[OutputDocument],
+    response_model_by_alias=True,
+    response_model_exclude_none=True,
+)
+async def get_history(
+    limit: int = Query(20, ge=1, le=HISTORY_MAX_LIMIT),
+) -> list[OutputDocument]:
+    """Most recent N outputs in newest-first order. Returns `[]` (not 404)
+    when the user hasn't run any inputs yet, so iOS / the dashboard can
+    render an empty state without special-casing the error envelope."""
+    docs = (
+        await OutputRecord.find()
+        .sort([(OutputRecord.computed_at, pymongo.DESCENDING)])
+        .limit(limit)
+        .to_list()
+    )
+    return [_record_to_response(d) for d in docs]
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────

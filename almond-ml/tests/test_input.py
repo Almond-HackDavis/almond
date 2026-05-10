@@ -167,3 +167,101 @@ class TestHealthz:
         resp = await client.get("/healthz")
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
+
+
+
+# ── /history endpoint ──────────────────────────────────────────────────────
+
+
+class TestGetHistory:
+    async def test_empty_array_when_no_runs_yet(self, client):
+        """No 404 — dashboard expects an empty list it can render as 'no data'."""
+        resp = await client.get("/history")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    async def test_returns_newest_first(self, client, valid_input_payload):
+        import asyncio
+
+        posted_ids = []
+        for _ in range(3):
+            r = await client.post("/input", json=valid_input_payload)
+            posted_ids.append(r.json()["_id"])
+            await asyncio.sleep(0.005)  # force monotonic computed_at
+
+        resp = await client.get("/history")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert isinstance(body, list)
+        assert len(body) == 3
+
+        # Newest-first → reverse of post order.
+        returned_ids = [doc["_id"] for doc in body]
+        assert returned_ids == list(reversed(posted_ids))
+
+        # Each entry is a full OutputDocument shape.
+        for doc in body:
+            assert UUID_HEX_RE.match(doc["_id"])
+            assert "scores" in doc and "vitality_score" in doc["scores"]
+            assert "computed_at" in doc
+
+    async def test_limit_clamps_to_requested(self, client, valid_input_payload):
+        for _ in range(5):
+            await client.post("/input", json=valid_input_payload)
+        resp = await client.get("/history?limit=2")
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+
+    async def test_limit_zero_rejected(self, client):
+        resp = await client.get("/history?limit=0")
+        assert resp.status_code == 422
+
+    async def test_limit_too_large_rejected(self, client):
+        resp = await client.get("/history?limit=201")
+        assert resp.status_code == 422
+
+
+# ── Clinical equations in scores block ─────────────────────────────────────
+
+
+class TestScoresClinicalEquations:
+    async def test_no_equations_when_clinical_inputs_missing(self, client, valid_input_payload):
+        """Default fixture has no chol/SBP/race — ASCVD + Framingham must NOT appear in scores."""
+        resp = await client.post("/input", json=valid_input_payload)
+        assert resp.status_code == 200
+        scores = resp.json()["scores"]
+        assert "ascvd_10yr" not in scores
+        assert "framingham_10yr" not in scores
+
+    async def test_equations_emitted_with_full_clinical_onboarding(
+        self, client, valid_input_payload,
+    ):
+        """When chol + HDL + SBP are populated, ASCVD + Framingham + LE8 surface in scores."""
+        full = {
+            **valid_input_payload,
+            "onboarding": {
+                **valid_input_payload["onboarding"],
+                "age": 55,                        # in PCE applicability range
+                "race_ethnicity": "white",
+                "systolic_bp": 118,
+                "total_cholesterol": 185,
+                "hdl_cholesterol": 58,
+            },
+        }
+        resp = await client.post("/input", json=full)
+        assert resp.status_code == 200, resp.text
+        scores = resp.json()["scores"]
+
+        assert "ascvd_10yr" in scores
+        assert 0.0 <= scores["ascvd_10yr"]["value"] <= 1.0
+        assert scores["ascvd_10yr"]["horizon_months"] == 120
+        assert scores["ascvd_10yr"]["applicable"] is True
+
+        assert "framingham_10yr" in scores
+        assert 0.0 <= scores["framingham_10yr"]["value"] <= 1.0
+        assert scores["framingham_10yr"]["applicable"] is True
+
+        assert "le8" in scores
+        assert 0.0 <= scores["le8"]["value"] <= 100.0
+        assert scores["le8"]["applicable"] is True
+        assert "coverage" in scores["le8"] and 0.0 <= scores["le8"]["coverage"] <= 1.0
