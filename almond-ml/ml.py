@@ -37,6 +37,8 @@ import joblib
 import numpy as np
 import pandas as pd
 
+import risk_equations
+
 log = logging.getLogger("almond.ml")
 
 # ── Locked constants — must match inspect/01c_features.py exactly ───────────
@@ -84,16 +86,53 @@ VO2_TIGHTNESS_FRAC: float = 0.20    # ±20% of age-norm spans most of [-1, +1]
 WHR_REFERENCE_BPM: float = 105.0
 WHR_TIGHTNESS_BPM: float = 18.0
 
-# Per-signal weights into the composite. Activity stays at 0.30 to preserve
-# its relative importance with the well-validated Saint-Maurice anchor;
-# HR/HRV/VO2 share the rest; walking_hr is small because it overlaps RHR.
+# Per-signal weights into the composite. Wearable signals share roughly
+# 0.58 of the envelope; clinical risk equations share roughly 0.42. The
+# split reflects the trade-off between (a) the wearable signals being more
+# behaviorally actionable and varying day-to-day and (b) the equations
+# being externally validated against millions of person-years of follow-up.
+# Equations only contribute when onboarding includes the inputs they need
+# (cholesterol, SBP, etc.); otherwise the share is redistributed to the
+# remaining signals via the same `available`-only normalization used for
+# missing wearable inputs.
 SIGNAL_WEIGHTS: dict[str, float] = {
-    "activity":   0.30,
-    "rhr":        0.22,
-    "hrv":        0.18,
-    "vo2":        0.25,
-    "walking_hr": 0.05,
+    # Wearable signals — Saint-Maurice / Jensen / Hillebrand / FRIEND anchored.
+    "activity":   0.18,
+    "rhr":        0.12,
+    "hrv":        0.10,
+    "vo2":        0.15,
+    "walking_hr": 0.03,
+    # Clinical risk equations — applied via the same wellness-curve mechanism.
+    "ascvd":      0.15,   # Goff 2013 PCE, 10-yr hard ASCVD
+    "framingham": 0.07,   # D'Agostino 2008, 10-yr broader CVD (overlaps ASCVD)
+    "findrisc":   0.08,   # Lindström 2003, 10-yr T2D
+    "le8":        0.12,   # Lloyd-Jones 2022, 0-100 cardiovascular health composite
 }
+
+# Wellness-curve anchors for the four equations. Each is a tanh that crosses
+# zero at the population-median risk and saturates near the high-risk
+# clinical-decision threshold. Anchors are calibrated for symmetric
+# discrimination across the actual published risk-band distributions, not
+# clinical decision cutpoints — those would make low-risk users look only
+# mildly positive and saturate too quickly at high risk.
+ASCVD_REF_RISK: float        = 0.05    # population median for ~50yo healthy adults
+ASCVD_TIGHTNESS: float       = 0.05    # 1% → +0.66 / 10% → -0.76 / 20% → -0.995
+FRAM_REF_RISK: float         = 0.07
+FRAM_TIGHTNESS: float        = 0.07    # symmetric across the broader-CVD band
+# FINDRISC published bands are skewed: 1/4/17/33/50%. Anchor between bands
+# 2 and 3 (≈8.5%) so very low risk maps to a meaningful positive (+0.7)
+# rather than the +0.26 you'd get with a 5%-anchored curve.
+FINDRISC_REF_RISK: float     = 0.085
+FINDRISC_TIGHTNESS: float    = 0.085
+LE8_REF_SCORE: float         = 50.0    # midpoint of the 0-100 scale
+LE8_TIGHTNESS: float         = 25.0    # 75 → +0.76, 25 → -0.76
+
+# Minimum coverage fractions to feed an equation into composite_bonus.
+# Below these, the equation still surfaces in `_eq_*` for display but is
+# skipped in the wellness average — its inputs were too thin to add
+# discrimination beyond what the wearable signals already provide.
+FINDRISC_MIN_COVERAGE: float = 0.75    # requires waist OR family-hx-diabetes
+LE8_MIN_COVERAGE: float      = 0.75    # requires lipids OR blood-pressure
 
 # Total bonus range, in vitality points. Bumped from the prior 10 → 13 so
 # that an elite middle-aged athlete (whose pool percentile is capped by
@@ -112,7 +151,7 @@ AGE_BANDS: tuple[tuple[int, int], ...] = (
     (50, 55), (55, 60), (60, 65), (65, 70), (70, 75), (75, 81),
 )
 
-MODEL_ID: str = "almond-cox-2yr-v0.2.0"   # bumped: HR/HRV/VO2 augmentation
+MODEL_ID: str = "almond-cox-2yr-v0.3.0"   # added ASCVD + Framingham + FINDRISC + LE8
 
 MODELS_DIR: Path = Path(__file__).resolve().parent / "models"
 COX_MODEL_PATH: Path = MODELS_DIR / "cox_model.pkl"
@@ -238,6 +277,11 @@ def engineer_features(onboarding: dict, samples: dict) -> dict[str, Any]:
     if isinstance(vo2_obj, dict) and vo2_obj.get("value") is not None:
         vo2_max = float(vo2_obj["value"])
 
+    # ── Onboarding pass-through for clinical risk equations ────────────────
+    # ascvd / framingham / findrisc / le8 read these directly from features.
+    # Any missing input causes the relevant equation to return None, which
+    # the composite drops out via the same available-signals normalization.
+    sex_str: str = "M" if sex_male >= 0.5 else "F"
     return {
         # Cox features.
         "age":             age,
@@ -251,7 +295,19 @@ def engineer_features(onboarding: dict, samples: dict) -> dict[str, Any]:
         "mean_hrv_sdnn":   mean_hrv_sdnn,
         "vo2_max":         vo2_max,
         "mean_walking_hr": mean_walking_hr,
-        # Display-only echoes for the Gemma prompt.
+        # Onboarding pass-through (consumed by clinical risk equations).
+        "_sex":             sex_str,
+        "_bmi":             bmi,
+        "_mean_excm":       mean_excm,
+        "_smoking":         onboarding.get("smoking"),
+        "_diabetes":        onboarding.get("diabetes"),
+        "_family_hx_cvd":   onboarding.get("family_history_cvd"),
+        "_on_bp_med":       onboarding.get("on_bp_medication"),
+        "_race":            onboarding.get("race_ethnicity"),
+        "_sbp":             onboarding.get("systolic_bp"),
+        "_total_chol":      onboarding.get("total_cholesterol"),
+        "_hdl":             onboarding.get("hdl_cholesterol"),
+        # Display-only echoes for the Gemma prompt (kept for backward compat).
         "_bmi_raw":        bmi,
         "_mean_sleep_min": mean_sleep_min,
     }
@@ -317,6 +373,26 @@ def _wellness_walking_hr(whr_bpm: float) -> float:
     return float(np.tanh((WHR_REFERENCE_BPM - whr_bpm) / WHR_TIGHTNESS_BPM))
 
 
+def _wellness_ascvd(risk_10yr: float) -> float:
+    """Lower 10-yr hard-ASCVD risk = better. Anchor at the 5% borderline cutpoint."""
+    return float(np.tanh((ASCVD_REF_RISK - risk_10yr) / ASCVD_TIGHTNESS))
+
+
+def _wellness_framingham(risk_10yr: float) -> float:
+    """Lower 10-yr broader-CVD risk = better."""
+    return float(np.tanh((FRAM_REF_RISK - risk_10yr) / FRAM_TIGHTNESS))
+
+
+def _wellness_findrisc(risk_10yr: float) -> float:
+    """Lower 10-yr T2D risk = better."""
+    return float(np.tanh((FINDRISC_REF_RISK - risk_10yr) / FINDRISC_TIGHTNESS))
+
+
+def _wellness_le8(score_0_100: float) -> float:
+    """Higher LE8 cardiovascular-health score = better."""
+    return float(np.tanh((score_0_100 - LE8_REF_SCORE) / LE8_TIGHTNESS))
+
+
 # ── Composite bonus ─────────────────────────────────────────────────────────
 
 
@@ -344,6 +420,73 @@ def signal_wellness(features: dict[str, Any]) -> dict[str, Optional[float]]:
 
     whr = features.get("mean_walking_hr")
     wellness["walking_hr"] = _wellness_walking_hr(whr) if whr else None
+
+    # ── Clinical risk equations ────────────────────────────────────────────
+    age      = features.get("age", 0.0)
+    sex      = features.get("_sex", "M")
+    bmi      = features.get("_bmi")
+    smoking  = features.get("_smoking")
+    diabetes = features.get("_diabetes")
+    on_bp    = features.get("_on_bp_med")
+    race     = features.get("_race")
+    sbp      = features.get("_sbp")
+    chol     = features.get("_total_chol")
+    hdl      = features.get("_hdl")
+    excm_d   = features.get("_mean_excm", 0.0)            # daily exercise mins
+    excm_w   = (excm_d * 7.0) if excm_d else None         # → weekly for LE8
+    sleep_m  = features.get("_mean_sleep_min")
+
+    ascvd = risk_equations.ascvd_10yr(
+        age=age, sex=sex, race=race,
+        total_chol=chol, hdl=hdl, sbp=sbp,
+        on_bp_medication=on_bp, smoking=smoking, diabetes=diabetes,
+    )
+    wellness["ascvd"] = _wellness_ascvd(ascvd) if ascvd is not None else None
+
+    fram = risk_equations.framingham_cvd_10yr(
+        age=age, sex=sex,
+        total_chol=chol, hdl=hdl, sbp=sbp,
+        on_bp_medication=on_bp, smoking=smoking, diabetes=diabetes,
+    )
+    wellness["framingham"] = _wellness_framingham(fram) if fram is not None else None
+
+    findr = risk_equations.findrisc_partial(
+        age=age, bmi=bmi if bmi is not None else 25.0,
+        on_bp_medication=on_bp, diabetes=diabetes,
+        daily_exercise_min=excm_d if excm_d else None,
+    )
+    # Coverage-gate the partial-mode equations — they only contribute to
+    # vitality when they have enough discriminating inputs to add information
+    # beyond what the wearable signals already capture. FINDRISC needs
+    # ≥0.75 coverage (which requires waist or family-hx-diabetes), and LE8
+    # needs ≥0.625 (which requires lipids or BP). Below these thresholds
+    # the equations still RUN and surface their score in `_eq_*` for iOS
+    # display, but they don't enter composite_bonus.
+    findr_cov = findr.get("coverage", 1.0) if findr else 0.0
+    if findr is not None and findr_cov >= FINDRISC_MIN_COVERAGE:
+        wellness["findrisc"] = _wellness_findrisc(findr["risk_10yr"])
+    else:
+        wellness["findrisc"] = None
+
+    le8 = risk_equations.life_essential_8(
+        bmi=bmi, weekly_exercise_min=excm_w, mean_sleep_min=sleep_m,
+        smoking=smoking, total_cholesterol=chol, hdl_cholesterol=hdl,
+        sbp=sbp, on_bp_medication=on_bp, diabetes=diabetes,
+    )
+    le8_cov = le8.get("coverage", 1.0) if le8 else 0.0
+    if le8 is not None and le8_cov >= LE8_MIN_COVERAGE:
+        wellness["le8"] = _wellness_le8(le8["score"])
+    else:
+        wellness["le8"] = None
+
+    # Stash the raw equation outputs on the features dict so top_drivers can
+    # show the underlying clinical number to the user instead of an opaque
+    # wellness score. Stored under `_eq_*` to keep them out of Cox / Tier-2
+    # feature scopes.
+    features["_eq_ascvd_risk_10yr"]      = ascvd
+    features["_eq_framingham_risk_10yr"] = fram
+    features["_eq_findrisc"]             = findr
+    features["_eq_le8"]                  = le8
 
     return wellness
 
@@ -438,6 +581,10 @@ def top_drivers(features: dict[str, Any], contributions: dict[str, float], n: in
         "hrv":        "Heart-rate variability",
         "vo2":        "Cardiorespiratory fitness (VO₂ max)",
         "walking_hr": "Walking heart rate",
+        "ascvd":      "10-yr hard-CVD risk (ASCVD)",
+        "framingham": "10-yr broader CVD risk (Framingham)",
+        "findrisc":   "10-yr type-2 diabetes risk (FINDRISC)",
+        "le8":        "Cardiovascular health score (AHA LE8)",
     }
     SIGNAL_RAW_KEY = {
         "activity":   "mean_daily_mims",
@@ -445,11 +592,22 @@ def top_drivers(features: dict[str, Any], contributions: dict[str, float], n: in
         "hrv":        "mean_hrv_sdnn",
         "vo2":        "vo2_max",
         "walking_hr": "mean_walking_hr",
+        # Clinical equations are stored under _eq_* with richer shape; we
+        # surface the headline number for UI rendering.
+        "ascvd":      "_eq_ascvd_risk_10yr",
+        "framingham": "_eq_framingham_risk_10yr",
+        "findrisc":   "_eq_findrisc",
+        "le8":        "_eq_le8",
     }
     ranked = sorted(contributions.items(), key=lambda kv: abs(kv[1]), reverse=True)[:n]
     drivers = []
     for name, pts in ranked:
-        raw_val = features.get(SIGNAL_RAW_KEY[name])
+        raw_val: Any = features.get(SIGNAL_RAW_KEY[name])
+        # Clinical equations stash dicts; expose the headline scalar to iOS.
+        if name == "findrisc" and isinstance(raw_val, dict):
+            raw_val = raw_val.get("risk_10yr", 0.0)
+        elif name == "le8" and isinstance(raw_val, dict):
+            raw_val = raw_val.get("score", 0.0)
         drivers.append({
             "feature":          name,
             "human_label":      HUMAN_LABELS.get(name, name),

@@ -31,7 +31,7 @@ class TestPostInput:
         assert "Almond is a wellness tool" in body["disclaimer"]
 
         meta = body["model_metadata"]
-        assert meta["model_id"] == "almond-cox-2yr-v0.2.0"
+        assert meta["model_id"] == "almond-cox-2yr-v0.3.0"
         assert meta["llm_model"] == "gemma-4-31b-it"
         assert meta["horizon_months"] == 24
         assert meta["prompt_template_version"]
