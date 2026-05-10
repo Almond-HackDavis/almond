@@ -62,7 +62,7 @@ def _patch_gemma(monkeypatch):
         vit = kwargs.get("vitality", 0.0)
         return gemma.GemmaResult(
             summary=f"Stubbed summary for vitality {vit:.1f}.",
-            model="gemma-3-27b-it",
+            model="gemma-4-31b-it",
             prompt_template_version=gemma.PROMPT_TEMPLATE_VERSION,
         )
 

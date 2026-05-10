@@ -14,6 +14,7 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic>=2",
     "python-multipart",
+    "python-dotenv>=1.0",
 
     # Mongo layer (motor was deprecated 14 May 2026).
     "pymongo>=4.13",

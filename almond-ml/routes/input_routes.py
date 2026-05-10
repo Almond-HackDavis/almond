@@ -4,24 +4,21 @@ GET  /output — read the latest "current" output document.
 Flow on every POST /input:
 
   1. Validate the request via `schemas.InputRequest`.
-  2. Persist the raw payload to `inputs` (append-only audit log).
-  3. Run `ml.run_pipeline(...)` to get raw_2yr_mortality + vitality.
-  4. Build a Gemma prompt; call `gemma.summarize(...)` for the user-facing
-     summary paragraph. On Gemma failure, fall back to a deterministic
-     human-readable string so the request still succeeds.
-  5. Upsert the result to `outputs` with `_id="current"`, AND append a
-     uuid-keyed history copy. Both share the same document shape.
-  6. Return the "current" doc as the HTTP response.
+  2. Upsert the raw payload to the `input` collection at _id="current".
+  3. Run `ml.run_pipeline(...)` → raw_2yr_mortality + vitality.
+  4. Build a Gemma prompt; call `gemma.summarize(...)`. On Gemma failure,
+     fall back to a deterministic summary so the request still succeeds.
+  5. Upsert the result to the `output` collection at _id="current".
+  6. Return the OutputDocument as the HTTP response.
 
-GET /output simply re-reads `outputs._id="current"` and returns it. Useful
-for iOS polling without re-running the pipeline.
+Both `input` and `output` are SINGLETON collections — exactly one row each,
+overwritten on every request. There is no history; iOS reads
+`output._id="current"` to render the dashboard.
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any
-from uuid import uuid4
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, status
@@ -29,17 +26,13 @@ from fastapi import APIRouter, HTTPException, status
 import gemma
 import ml
 from db import InputRecord, OutputRecord, utcnow
-from schemas import (
-    InputRequest,
-    ModelMetadata,
-    OutputDocument,
-)
+from schemas import InputRequest, ModelMetadata, OutputDocument
 
 log = logging.getLogger("almond.routes.input")
 
 router = APIRouter(tags=["input"])
 
-CURRENT_OUTPUT_ID: str = "current"
+CURRENT_ID: str = "current"
 
 
 # ── Handlers ────────────────────────────────────────────────────────────────
@@ -54,26 +47,18 @@ CURRENT_OUTPUT_ID: str = "current"
 async def submit_input(req: InputRequest) -> OutputDocument:
     received_at = utcnow()
 
-    # 1. Audit-persist raw payload.
-    input_record = InputRecord(
-        received_at=received_at,
-        onboarding=req.onboarding.model_dump(),
-        samples=req.samples.model_dump(),
-    )
-    await input_record.insert()
+    # 1. Upsert the raw payload to input._id="current".
+    onboarding_dict = req.onboarding.model_dump()
+    samples_dict = req.samples.model_dump()
+    await _upsert_input(received_at, onboarding_dict, samples_dict)
 
     # 2. Run ML pipeline.
-    pipe = ml.run_pipeline(
-        onboarding=req.onboarding.model_dump(),
-        samples=req.samples.model_dump(),
-    )
+    pipe = ml.run_pipeline(onboarding=onboarding_dict, samples=samples_dict)
     raw_risk: float = pipe["raw_2yr_mortality"]
     vitality: float = pipe["vitality"]
     feats: dict[str, Any] = pipe["features"]
 
-    # 3. Build Gemma prompt + summary. Falls back gracefully on errors so a
-    #    Gemma outage doesn't break the entire request.
-    samples_dict = req.samples.model_dump()
+    # 3. Call Gemma. Fallback summary on any failure so the score still ships.
     avg_steps = _mean_of(samples_dict.get("steps_daily", []), "count")
     avg_kcal  = _mean_of(samples_dict.get("active_energy_daily_kcal", []), "kcal")
     avg_excm  = _mean_of(samples_dict.get("exercise_minutes_daily", []), "minutes")
@@ -101,8 +86,7 @@ async def submit_input(req: InputRequest) -> OutputDocument:
         summary_text = _fallback_summary(vitality, feats)
         llm_model_used = "fallback-deterministic-v0"
 
-    # 4. Build the output document. Per-score dicts have different shapes —
-    #    vitality has `max`, mortality has `ci_low`/`ci_high` (nullable).
+    # 4. Build the output document.
     scores: dict[str, dict[str, Any]] = {
         "vitality_score":       {"value": round(vitality, 1), "max": 100.0},
         "nhanes_mortality_2yr": {"value": round(raw_risk, 4), "ci_low": None, "ci_high": None},
@@ -114,7 +98,7 @@ async def submit_input(req: InputRequest) -> OutputDocument:
         horizon_months=ml.HORIZON_MONTHS,
     )
     out = OutputDocument.model_validate({
-        "_id": CURRENT_OUTPUT_ID,
+        "_id": CURRENT_ID,
         "computed_at": utcnow(),
         "input_uploaded_at": received_at,
         "scores": scores,
@@ -123,9 +107,8 @@ async def submit_input(req: InputRequest) -> OutputDocument:
         "model_metadata": metadata.model_dump(),
     })
 
-    # 5. Persist (upsert "current" + append a uuid history copy).
-    await _upsert_current(out, input_id=input_record.id)
-    await _append_history(out, input_id=input_record.id)
+    # 5. Upsert output._id="current".
+    await _upsert_output(out)
 
     return out
 
@@ -137,7 +120,7 @@ async def submit_input(req: InputRequest) -> OutputDocument:
     response_model_exclude_none=True,
 )
 async def get_current_output() -> OutputDocument:
-    doc = await OutputRecord.get(CURRENT_OUTPUT_ID)
+    doc = await OutputRecord.get(CURRENT_ID)
     if doc is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -161,7 +144,7 @@ def _mean_of(rows: list[dict], key: str) -> float:
 
 
 def _fallback_summary(vitality: float, feats: dict[str, Any]) -> str:
-    """Deterministic backup when Gemma is unavailable. No PII, no dynamic data."""
+    """Deterministic backup when Gemma is unavailable. No PII, no medical advice."""
     age = int(feats.get("age", 0))
     if vitality >= 80:
         tone = (
@@ -187,41 +170,37 @@ def _fallback_summary(vitality: float, feats: dict[str, Any]) -> str:
     return tone + f" (Snapshot generated for a {age}-year-old user.)"
 
 
-async def _upsert_current(out: OutputDocument, *, input_id: str) -> None:
-    """Replace `outputs._id="current"` with the new row."""
-    coll = OutputRecord.get_pymongo_collection()
-    payload = _to_mongo_doc(out, input_id=input_id, override_id=CURRENT_OUTPUT_ID)
-    await coll.replace_one({"_id": CURRENT_OUTPUT_ID}, payload, upsert=True)
-
-
-async def _append_history(out: OutputDocument, *, input_id: str) -> None:
-    """Append a UUID-keyed copy so we keep history."""
-    history_id = uuid4().hex
-    rec = OutputRecord(
-        id=history_id,
-        computed_at=out.computed_at,
-        input_uploaded_at=out.input_uploaded_at,
-        input_id=input_id,
-        scores=out.scores,
-        gemma_summary=out.gemma_summary,
-        disclaimer=out.disclaimer,
-        model_metadata=out.model_metadata.model_dump(),
+async def _upsert_input(received_at, onboarding: dict, samples: dict) -> None:
+    """Replace `input._id="current"` with the new payload."""
+    coll = InputRecord.get_pymongo_collection()
+    await coll.replace_one(
+        {"_id": CURRENT_ID},
+        {
+            "_id": CURRENT_ID,
+            "received_at": received_at,
+            "onboarding": onboarding,
+            "samples": samples,
+        },
+        upsert=True,
     )
-    await rec.insert()
 
 
-def _to_mongo_doc(out: OutputDocument, *, input_id: str, override_id: str) -> dict[str, Any]:
-    """Pydantic → BSON-shaped dict for direct collection writes."""
-    return {
-        "_id": override_id,
-        "computed_at": out.computed_at,
-        "input_uploaded_at": out.input_uploaded_at,
-        "input_id": input_id,
-        "scores": out.scores,
-        "gemma_summary": out.gemma_summary,
-        "disclaimer": out.disclaimer,
-        "model_metadata": out.model_metadata.model_dump(),
-    }
+async def _upsert_output(out: OutputDocument) -> None:
+    """Replace `output._id="current"` with the new prediction."""
+    coll = OutputRecord.get_pymongo_collection()
+    await coll.replace_one(
+        {"_id": CURRENT_ID},
+        {
+            "_id": CURRENT_ID,
+            "computed_at": out.computed_at,
+            "input_uploaded_at": out.input_uploaded_at,
+            "scores": out.scores,
+            "gemma_summary": out.gemma_summary,
+            "disclaimer": out.disclaimer,
+            "model_metadata": out.model_metadata.model_dump(),
+        },
+        upsert=True,
+    )
 
 
 def _record_to_response(rec: OutputRecord) -> OutputDocument:

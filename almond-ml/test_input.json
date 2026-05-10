@@ -1,0 +1,54 @@
+{
+  "onboarding": {
+    "age": 35,
+    "sex": "M",
+    "height_cm": 180.0,
+    "weight_kg": 78.0,
+    "smoking": false,
+    "diabetes": false,
+    "family_history_cvd": false,
+    "on_bp_medication": false,
+    "race_ethnicity": null,
+    "systolic_bp": null,
+    "total_cholesterol": null,
+    "hdl_cholesterol": null
+  },
+  "samples": {
+    "steps_daily": [
+      {"date": "2026-05-02", "count": 9100},
+      {"date": "2026-05-03", "count": 8400},
+      {"date": "2026-05-04", "count": 11200},
+      {"date": "2026-05-05", "count": 7600},
+      {"date": "2026-05-06", "count": 8800},
+      {"date": "2026-05-07", "count": 10300},
+      {"date": "2026-05-08", "count": 9050}
+    ],
+    "active_energy_daily_kcal": [
+      {"date": "2026-05-02", "kcal": 480},
+      {"date": "2026-05-03", "kcal": 410},
+      {"date": "2026-05-04", "kcal": 620},
+      {"date": "2026-05-05", "kcal": 380},
+      {"date": "2026-05-06", "kcal": 450},
+      {"date": "2026-05-07", "kcal": 540},
+      {"date": "2026-05-08", "kcal": 470}
+    ],
+    "exercise_minutes_daily": [
+      {"date": "2026-05-02", "minutes": 32},
+      {"date": "2026-05-03", "minutes": 25},
+      {"date": "2026-05-04", "minutes": 55},
+      {"date": "2026-05-05", "minutes": 18},
+      {"date": "2026-05-06", "minutes": 30},
+      {"date": "2026-05-07", "minutes": 42},
+      {"date": "2026-05-08", "minutes": 35}
+    ],
+    "sleep_sessions": [
+      {"start": "2026-05-01T23:15:00Z", "end": "2026-05-02T07:00:00Z", "duration_min": 465},
+      {"start": "2026-05-02T23:30:00Z", "end": "2026-05-03T07:10:00Z", "duration_min": 460},
+      {"start": "2026-05-03T22:50:00Z", "end": "2026-05-04T06:55:00Z", "duration_min": 485},
+      {"start": "2026-05-04T23:40:00Z", "end": "2026-05-05T07:00:00Z", "duration_min": 440},
+      {"start": "2026-05-05T23:20:00Z", "end": "2026-05-06T07:05:00Z", "duration_min": 465},
+      {"start": "2026-05-06T23:10:00Z", "end": "2026-05-07T07:00:00Z", "duration_min": 470},
+      {"start": "2026-05-07T23:25:00Z", "end": "2026-05-08T07:05:00Z", "duration_min": 460}
+    ]
+  }
+}

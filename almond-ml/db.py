@@ -1,14 +1,15 @@
 """MongoDB layer.
 
-Two collections:
+Two collections, both singleton:
 
-  * `inputs`   — append-only audit log of every POST /input payload.
-                 _id is a UUID4 hex string, stamped at insert time.
+  * `input`   — the latest POST /input payload, _id="current", upserted on
+                every request.
+  * `output`  — the latest pipeline result, _id="current", upserted right
+                after Cox + Gemma run.
 
-  * `outputs`  — the prediction documents. Two write patterns:
-      - the "current" singleton row (_id="current") is upserted on every
-        request so iOS can read the latest with one round-trip.
-      - a copy is also appended with a UUID id for history / replay.
+iOS reads `output._id="current"` to get the latest dashboard. There is no
+history collection, no append-only audit log. If you want history later
+add a separate collection (e.g. `output_history`) — don't reuse these.
 
 Uses pymongo's `AsyncMongoClient` (motor was deprecated 14 May 2026) and
 Beanie 2.x for document mapping.
@@ -40,7 +41,11 @@ def new_id() -> str:
 
 
 class InputRecord(Document):
-    """Audit log of every POST /input received. Append-only."""
+    """The latest POST /input payload. Singleton; _id is always "current".
+
+    Beanie's default `id` factory generates UUIDs; we override to "current"
+    in the route handler's upsert so the document is overwritten in place.
+    """
 
     id: str = Field(default_factory=new_id)
     received_at: datetime = Field(default_factory=utcnow)
@@ -48,28 +53,15 @@ class InputRecord(Document):
     samples: dict[str, Any]
 
     class Settings:
-        name = "inputs"
-        indexes = [
-            pymongo.IndexModel("received_at", name="received_at"),
-        ]
+        name = "input"
 
 
 class OutputRecord(Document):
-    """One Cox + Gemma prediction. Two coexisting write patterns:
-
-      * `id == "current"` — singleton, upserted on every request. iOS reads
-        this to render the latest dashboard.
-      * `id` == UUID4 hex — append-only history for charts / replay.
-
-    Both use the same `Settings.name = "outputs"`. The two row classes are
-    plain doc-shape twins; the choice happens at the call site in
-    routes/input_routes.py.
-    """
+    """The latest Cox + Gemma prediction. Singleton; _id is always "current"."""
 
     id: str = Field(default_factory=new_id)
     computed_at: datetime = Field(default_factory=utcnow)
     input_uploaded_at: datetime
-    input_id: Optional[str] = None
 
     scores: dict[str, dict[str, Any]]
     gemma_summary: str
@@ -77,11 +69,7 @@ class OutputRecord(Document):
     model_metadata: dict[str, Any]
 
     class Settings:
-        name = "outputs"
-        indexes = [
-            pymongo.IndexModel("computed_at", name="computed_at_desc",
-                               expireAfterSeconds=None),
-        ]
+        name = "output"
 
 
 DOCUMENT_MODELS: list[type[Document]] = [InputRecord, OutputRecord]

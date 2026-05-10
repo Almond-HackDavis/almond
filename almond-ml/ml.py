@@ -124,13 +124,24 @@ def engineer_features(onboarding: dict, samples: dict) -> dict[str, float]:
     bmi = weight_kg / (height_m * height_m)
 
     # Composite MIMS proxy, calibrated to roughly straddle NHANES PAXDAY mean
-    # (~2.67M). Same recipe as inspect/04_worker.py — placeholder until we
-    # have ground-truth Apple-Watch-to-MIMS pairs.
-    steps = np.asarray([d["count"]   for d in samples.get("steps_daily", [])],              dtype=float)
-    kcal  = np.asarray([d["kcal"]    for d in samples.get("active_energy_daily_kcal", [])], dtype=float)
-    excm  = np.asarray([d["minutes"] for d in samples.get("exercise_minutes_daily", [])],   dtype=float)
-    daily_mims = 250_000.0 * (steps / 1000.0) + 2_000.0 * kcal + 30_000.0 * excm
-    mean_daily_mims = float(daily_mims.mean()) if daily_mims.size else 0.0
+    # (~2.67M). HealthKit doesn't guarantee aligned per-day arrays — iOS may
+    # send 91 days of steps but only 33 days of active energy if the user
+    # didn't wear the watch every day. We therefore mean each metric
+    # independently before combining. By linearity of the mean, this is
+    # mathematically identical to the per-day-then-mean approach when the
+    # arrays ARE aligned, and tolerant of any ragged shape otherwise.
+    def _mean_field(rows: list[dict], key: str) -> float:
+        vals = [float(r[key]) for r in rows if isinstance(r, dict) and key in r and r[key] is not None]
+        return float(np.mean(vals)) if vals else 0.0
+
+    mean_steps = _mean_field(samples.get("steps_daily", []),              "count")
+    mean_kcal  = _mean_field(samples.get("active_energy_daily_kcal", []), "kcal")
+    mean_excm  = _mean_field(samples.get("exercise_minutes_daily", []),   "minutes")
+    mean_daily_mims = (
+        250_000.0 * (mean_steps / 1000.0)
+        + 2_000.0 * mean_kcal
+        + 30_000.0 * mean_excm
+    )
 
     sleep = np.asarray([s["duration_min"] for s in samples.get("sleep_sessions", [])], dtype=float)
     mean_sleep_min = float(sleep.mean()) if sleep.size else SLEEP_OPTIMUM_MIN

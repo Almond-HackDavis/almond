@@ -120,3 +120,40 @@ class TestRunPipeline:
             assert key in out
         assert 0.0 <= out["vitality"] <= 100.0
         assert 0.0 < out["raw_2yr_mortality"] < 1.0
+
+
+class TestRaggedHealthKitArrays:
+    """HealthKit doesn't guarantee aligned per-day arrays — iOS routinely sends
+    91 days of steps but 33 days of active energy. The pipeline must NOT crash
+    on this; it must mean each metric independently before combining."""
+
+    def test_ragged_arrays_no_crash(self):
+        ragged = {
+            "steps_daily":              [{"date": f"2026-05-{d:02d}", "count": 8000 + d * 50} for d in range(1, 92)],   # 91 days
+            "active_energy_daily_kcal": [{"date": f"2026-05-{d:02d}", "kcal":  400 + d * 5}   for d in range(1, 34)],   # 33 days
+            "exercise_minutes_daily":   [{"date": f"2026-05-{d:02d}", "minutes": 30 + d}      for d in range(1, 50)],   # 49 days
+            "sleep_sessions":           [{"start": "x", "end": "y", "duration_min": 460}     for _ in range(60)],
+        }
+        out = ml.run_pipeline(_onboarding(), ragged)
+        assert 0.0 < out["raw_2yr_mortality"] < 1.0
+        assert 0.0 <= out["vitality"] <= 100.0
+
+    def test_ragged_equivalence_to_aligned(self):
+        """Mathematical guarantee: for aligned arrays, the new scalar-mean path
+        produces the same MIMS as the prior per-day-then-mean computation."""
+        aligned = _samples(steps=8000, kcal=400, excm=30, sleep_min=460)
+        feats = ml.engineer_features(_onboarding(), aligned)
+        # 250k * (8000/1000) + 2k * 400 + 30k * 30 = 2_000_000 + 800_000 + 900_000 = 3_700_000
+        assert abs(feats["mean_daily_mims"] - 3_700_000.0) < 1.0
+
+    def test_one_metric_empty(self):
+        """If iOS sends no exercise minutes (HK denied that permission),
+        the pipeline still produces a valid score."""
+        partial = {
+            "steps_daily":              [{"date": "2026-05-08", "count": 8000}],
+            "active_energy_daily_kcal": [{"date": "2026-05-08", "kcal":  400}],
+            "exercise_minutes_daily":   [],
+            "sleep_sessions":           [{"start": "x", "end": "y", "duration_min": 460}],
+        }
+        out = ml.run_pipeline(_onboarding(), partial)
+        assert 0.0 < out["raw_2yr_mortality"] < 1.0

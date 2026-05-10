@@ -32,7 +32,7 @@ class TestPostInput:
 
         meta = body["model_metadata"]
         assert meta["model_id"] == "almond-cox-2yr-v0.1.0"
-        assert meta["llm_model"] == "gemma-3-27b-it"
+        assert meta["llm_model"] == "gemma-4-31b-it"
         assert meta["horizon_months"] == 24
         assert meta["prompt_template_version"]
 
@@ -95,18 +95,24 @@ class TestPostInput:
         body = resp.json()
         assert 0.0 <= body["scores"]["vitality_score"]["value"] <= 100.0
 
-    async def test_history_copy_is_appended(self, client, valid_input_payload):
-        from db import OutputRecord
+    async def test_singleton_only_no_history_copies(self, client, valid_input_payload):
+        """Both `input` and `output` are SINGLETON collections.
+        No matter how many POST /input calls fire, exactly one row each.
+        """
+        from db import InputRecord, OutputRecord
+
+        await client.post("/input", json=valid_input_payload)
         await client.post("/input", json=valid_input_payload)
         await client.post("/input", json=valid_input_payload)
 
+        all_inputs = await InputRecord.find_all().to_list()
         all_outputs = await OutputRecord.find_all().to_list()
-        # Expect 2 history copies + 1 "current" singleton = 3 docs.
-        ids = [d.id for d in all_outputs]
-        assert "current" in ids
-        non_current_ids = [i for i in ids if i != "current"]
-        assert len(non_current_ids) == 2
-        assert all(len(i) == 32 for i in non_current_ids), f"history ids should be UUID hex: {non_current_ids}"
+
+        assert len(all_inputs) == 1
+        assert all_inputs[0].id == "current"
+
+        assert len(all_outputs) == 1
+        assert all_outputs[0].id == "current"
 
 
 class TestGetOutput:

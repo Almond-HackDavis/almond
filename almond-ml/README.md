@@ -66,7 +66,7 @@ Response (also what `GET /output` returns once any input has been processed):
   "model_metadata": {
     "model_id": "almond-cox-2yr-v0.1.0",
     "prompt_template_version": "2.0.0",
-    "llm_model": "gemma-3-27b-it",
+    "llm_model": "gemma-4-31b-it",
     "horizon_months": 24
   }
 }

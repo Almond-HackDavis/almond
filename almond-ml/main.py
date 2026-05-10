@@ -18,7 +18,17 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator
+
+# Auto-load .env so `uvicorn main:app` works without `source .env` first.
+# Best-effort — if python-dotenv isn't installed (e.g. minimal prod image)
+# we silently fall back to whatever's already in os.environ.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent / ".env")
+except ImportError:
+    pass
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -97,3 +107,22 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+        log_level="info",
+    )
