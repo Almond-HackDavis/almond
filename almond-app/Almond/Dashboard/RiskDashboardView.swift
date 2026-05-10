@@ -84,6 +84,10 @@ struct RiskDashboardView: View {
             VStack(spacing: 16) {
                 scoresGrid(scores: output.scores)
 
+                if !output.topDrivers.isEmpty {
+                    driversCard(drivers: output.topDrivers)
+                }
+
                 if let summary = output.gemmaSummary {
                     summaryCard(summary: summary, disclaimer: output.disclaimer)
                 }
@@ -110,10 +114,23 @@ struct RiskDashboardView: View {
             if let nhanes = scores.nhanesMortality2yr {
                 ScoreCard(
                     title: "2-yr Mortality Risk",
-                    value: String(format: "%.1f%%", nhanes.value * 100),
+                    value: String(format: "%.2f%%", nhanes.value * 100),
                     subtitle: "NHANES model",
                     icon: "chart.bar.fill",
                     color: Color.almondSlate
+                )
+            }
+            if let fa = scores.fitnessAge {
+                let delta = fa.delta
+                let subtitle = delta < 0
+                    ? "\(Int(abs(delta.rounded()))) yrs younger"
+                    : "\(Int(delta.rounded())) yrs older"
+                ScoreCard(
+                    title: "Fitness Age",
+                    value: String(format: "%.0f", fa.value),
+                    subtitle: subtitle,
+                    icon: "figure.run",
+                    color: delta < 0 ? Color.riskLow : Color.riskElevated
                 )
             }
         }
@@ -135,6 +152,39 @@ struct RiskDashboardView: View {
         case 40..<60: return Color.almondHoney
         default: return Color.riskElevated
         }
+    }
+
+    // MARK: - Top drivers
+
+    private func driversCard(drivers: [TopDriver]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("What's driving your score", systemImage: "chart.bar.xaxis")
+                .font(.headline)
+                .foregroundStyle(Color.labelPrimary)
+
+            ForEach(drivers) { driver in
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        Image(systemName: driver.direction == "better" ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                            .foregroundStyle(driver.direction == "better" ? Color.riskLow : Color.riskElevated)
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(driver.humanLabel)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color.labelPrimary)
+                            Text(String(format: "%+.2f pts", driver.contributionPts))
+                                .font(.caption)
+                                .foregroundStyle(Color.labelSecondary)
+                        }
+                        Spacer()
+                    }
+                    if driver.id != drivers.last?.id { Divider() }
+                }
+            }
+        }
+        .padding()
+        .background(Color.surfaceCard, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.separator, lineWidth: 0.5))
     }
 
     // MARK: - Gemma summary

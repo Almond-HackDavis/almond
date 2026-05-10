@@ -20,8 +20,8 @@ actor APIClient {
     // MARK: - Endpoints
 
     /// POST /input — blocks ~3-5 s on the server and returns the finished OutputDocument directly.
-    func submitInput(healthKit: HealthKitUploadRequest) async throws -> BridgeOutput {
-        let body = BridgeInputRequest(userId: Self.userId, onboarding: buildOnboarding(), samples: healthKit.samples)
+    func submitInput(samples: HealthKitSamples) async throws -> BridgeOutput {
+        let body = BridgeInputRequest(onboarding: buildOnboarding(), samples: samples)
         return try await post(path: "/input", body: body)
     }
 
