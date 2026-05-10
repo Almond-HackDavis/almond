@@ -179,7 +179,6 @@ final class HealthKitManager {
 
         let dayFmt = DateFormatter()
         dayFmt.dateFormat = "yyyy-MM-dd"
-        dayFmt.timeZone = TimeZone(identifier: "UTC")!
 
         let samples = HealthKitSamples(
             restingHrDaily: rhr.map { RestingHRSample(date: dayFmt.string(from: $0.date), bpm: Int($0.value.rounded())) },
@@ -219,9 +218,7 @@ final class HealthKitManager {
         let quantityType = HKQuantityType(identifier)
         let predicate = HKQuery.predicateForSamples(withStart: start, end: end)
         let interval = DateComponents(day: 1)
-        var calendar = Calendar.current
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let anchor = calendar.startOfDay(for: start)
+        let anchor = Calendar.current.startOfDay(for: start)
 
         return await withCheckedContinuation { continuation in
             let query = HKStatisticsCollectionQuery(

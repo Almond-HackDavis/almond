@@ -1,23 +1,13 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var authManager: AuthManager
+    @AppStorage("onboarding_complete") private var onboardingComplete = false
 
     var body: some View {
-        Group {
-            if authManager.isAuthenticated {
-                if authManager.needsOnboarding {
-                    OnboardingView {
-                        authManager.markOnboardingComplete()
-                    }
-                } else {
-                    DashboardView()
-                }
-            } else {
-                WelcomeView()
-            }
+        if onboardingComplete {
+            DashboardView()
+        } else {
+            OnboardingView { onboardingComplete = true }
         }
-        .animation(.easeInOut(duration: 0.35), value: authManager.isAuthenticated)
-        .animation(.easeInOut(duration: 0.35), value: authManager.needsOnboarding)
     }
 }

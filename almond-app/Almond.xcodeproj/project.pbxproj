@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		AA000000000000000000002B /* AlmondApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000018 /* AlmondApp.swift */; };
 		AA000000000000000000002C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000019 /* ContentView.swift */; };
-		AA000000000000000000002D /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001A /* WelcomeView.swift */; };
 		AA0000000000000000000030 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001D /* OnboardingView.swift */; };
 		AA0000000000000000000031 /* OnboardingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001E /* OnboardingViewModel.swift */; };
 		AA0000000000000000000032 /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000001F /* HealthKitManager.swift */; };
@@ -28,10 +27,11 @@
 		AA0000000000000000000041 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000003F /* Preview Assets.xcassets */; };
 		AA0000000000000000000044 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000043 /* ProfileView.swift */; };
 		AA0000000000000000000046 /* Color+Almond.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000045 /* Color+Almond.swift */; };
-		CC000000000000000000CC02 /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC01 /* KeychainHelper.swift */; };
-		CC000000000000000000CC04 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC03 /* AuthManager.swift */; };
 		CC000000000000000000CC06 /* APIRiskViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC05 /* APIRiskViewModel.swift */; };
 		CC000000000000000000CC08 /* RiskDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC07 /* RiskDashboardView.swift */; };
+		CC000000000000000000CC0A /* MongoDBConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC09 /* MongoDBConfig.swift */; };
+		CC000000000000000000CC0C /* MongoDBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0B /* MongoDBService.swift */; };
+		CC000000000000000000CC0E /* MongoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0D /* MongoModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,7 +41,6 @@
 		AA0000000000000000000017 /* Almond.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Almond.entitlements; sourceTree = "<group>"; };
 		AA0000000000000000000018 /* AlmondApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlmondApp.swift; sourceTree = "<group>"; };
 		AA0000000000000000000019 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		AA000000000000000000001A /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		AA000000000000000000001D /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		AA000000000000000000001E /* OnboardingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingViewModel.swift; sourceTree = "<group>"; };
 		AA000000000000000000001F /* HealthKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitManager.swift; sourceTree = "<group>"; };
@@ -59,10 +58,11 @@
 		AA000000000000000000003F /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		AA0000000000000000000043 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000045 /* Color+Almond.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Almond.swift"; sourceTree = "<group>"; };
-		CC000000000000000000CC01 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
-		CC000000000000000000CC03 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		CC000000000000000000CC05 /* APIRiskViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIRiskViewModel.swift; sourceTree = "<group>"; };
 		CC000000000000000000CC07 /* RiskDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RiskDashboardView.swift; sourceTree = "<group>"; };
+		CC000000000000000000CC09 /* MongoDBConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoDBConfig.swift; sourceTree = "<group>"; };
+		CC000000000000000000CC0B /* MongoDBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoDBService.swift; sourceTree = "<group>"; };
+		CC000000000000000000CC0D /* MongoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -118,9 +118,6 @@
 		AA0000000000000000000005 /* Auth */ = {
 			isa = PBXGroup;
 			children = (
-				AA000000000000000000001A /* WelcomeView.swift */,
-				CC000000000000000000CC03 /* AuthManager.swift */,
-				CC000000000000000000CC01 /* KeychainHelper.swift */,
 			);
 			path = Auth;
 			sourceTree = "<group>";
@@ -163,6 +160,9 @@
 			children = (
 				AA0000000000000000000026 /* APIClient.swift */,
 				AA0000000000000000000027 /* APIModels.swift */,
+				CC000000000000000000CC09 /* MongoDBConfig.swift */,
+				CC000000000000000000CC0B /* MongoDBService.swift */,
+				CC000000000000000000CC0D /* MongoModels.swift */,
 			);
 			path = Networking;
 			sourceTree = "<group>";
@@ -265,7 +265,6 @@
 			files = (
 				AA000000000000000000002B /* AlmondApp.swift in Sources */,
 				AA000000000000000000002C /* ContentView.swift in Sources */,
-				AA000000000000000000002D /* WelcomeView.swift in Sources */,
 				AA0000000000000000000030 /* OnboardingView.swift in Sources */,
 				AA0000000000000000000031 /* OnboardingViewModel.swift in Sources */,
 				AA0000000000000000000032 /* HealthKitManager.swift in Sources */,
@@ -279,10 +278,11 @@
 				AA000000000000000000003A /* APIModels.swift in Sources */,
 				AA0000000000000000000044 /* ProfileView.swift in Sources */,
 				AA0000000000000000000046 /* Color+Almond.swift in Sources */,
-				CC000000000000000000CC02 /* KeychainHelper.swift in Sources */,
-				CC000000000000000000CC04 /* AuthManager.swift in Sources */,
 				CC000000000000000000CC06 /* APIRiskViewModel.swift in Sources */,
 				CC000000000000000000CC08 /* RiskDashboardView.swift in Sources */,
+				CC000000000000000000CC0A /* MongoDBConfig.swift in Sources */,
+				CC000000000000000000CC0C /* MongoDBService.swift in Sources */,
+				CC000000000000000000CC0E /* MongoModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

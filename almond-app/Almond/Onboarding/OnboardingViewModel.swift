@@ -16,48 +16,12 @@ final class OnboardingViewModel: ObservableObject {
     @Published var hdlCholesterol: Int? = nil
     @Published var raceEthnicity: String? = nil
 
-    @Published var isSubmitting: Bool = false
-    @Published var submitError: String?
-
     var isValid: Bool {
         heightCm != nil && weightKg != nil
     }
 
-    /// Saves profile locally, then POSTs to backend. Returns true on success or 409 conflict.
-    func submit() async -> Bool {
-        guard let height = heightCm, let weight = weightKg else { return false }
-        isSubmitting = true
-        defer { isSubmitting = false }
-        submitError = nil
-
-        saveLocally(height: height, weight: weight)
-
-        let req = OnboardingRequest(
-            age: age,
-            sex: sex,
-            heightCm: height,
-            weightKg: weight,
-            smoking: smoking,
-            diabetes: diabetes,
-            familyHistoryCvd: familyHistoryCvd,
-            raceEthnicity: raceEthnicity,
-            systolicBp: systolicBp,
-            totalCholesterol: totalCholesterol,
-            hdlCholesterol: hdlCholesterol,
-            onBpMedication: onBpMedication
-        )
-        do {
-            _ = try await APIClient.shared.submitOnboarding(req)
-            return true
-        } catch AlmondError.api(let code, _) where code == "http_409" {
-            return true   // 409 = already completed; treat as done
-        } catch {
-            submitError = error.localizedDescription
-            return false
-        }
-    }
-
-    private func saveLocally(height: Double, weight: Double) {
+    func save() {
+        guard let height = heightCm, let weight = weightKg else { return }
         let d = UserDefaults.standard
         d.set(name,             forKey: "ob.name")
         d.set(age,              forKey: "ob.age")

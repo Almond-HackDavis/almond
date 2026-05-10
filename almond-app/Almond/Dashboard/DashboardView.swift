@@ -23,7 +23,7 @@ struct DashboardView: View {
         }
         .task {
             async let local: () = localVM.load()
-            async let risk: () = riskVM.uploadAndPoll()
+            async let risk: () = riskVM.fetchLatestOnly()
             _ = await (local, risk)
         }
     }

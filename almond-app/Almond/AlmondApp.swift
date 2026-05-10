@@ -2,8 +2,6 @@ import SwiftUI
 
 @main
 struct AlmondApp: App {
-    @StateObject private var authManager = AuthManager()
-
     init() {
         BackgroundSync.register()
     }
@@ -11,7 +9,6 @@ struct AlmondApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(authManager)
         }
     }
 }
