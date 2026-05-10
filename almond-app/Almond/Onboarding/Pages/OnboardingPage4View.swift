@@ -2,111 +2,118 @@ import SwiftUI
 
 struct OnboardingPage4View: View {
     let onNext: () -> Void
-    let onSkip: () -> Void
 
     @State private var agreed = false
 
     var body: some View {
-        ZStack {
-            Color.backgroundPrimary.ignoresSafeArea()
+        VStack(alignment: .leading, spacing: 0) {
+            OnboardingHeader()
+                .padding(.top, 8)
 
-            VStack(alignment: .leading, spacing: 0) {
-                OnboardingHeader(onSkip: onSkip)
-                    .padding(.top, 8)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("BEFORE YOU BEGIN")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.labelTertiary)
+                        .kerning(2.0)
+                        .padding(.top, 28)
 
-                OnboardingTagline()
-                    .padding(.horizontal, 24)
-                    .padding(.top, 4)
-
-                ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Important\nInformation")
-                            .font(Font.poppins(.bold, size: 34))
+                        Text("Important")
+                            .font(Font.poppins(.bold, size: 38))
                             .foregroundStyle(Color.almondInk)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 24)
-                            .padding(.horizontal, 24)
-
-                        Text(disclaimerAttributedString)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .lineSpacing(3)
-                            .padding(.horizontal, 24)
-                            .padding(.top, 20)
+                        Text("Information.")
+                            .font(Font.poppins(.bold, size: 38))
+                            .foregroundStyle(Color.almondCocoa)
                     }
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        disclaimerRow(
+                            "Almond provides wellness insights and preventative cardiovascular guidance based on wearable and health data."
+                        )
+                        disclaimerRow(
+                            body: "Almond is ",
+                            bold: "not a medical device",
+                            tail: " and does not diagnose, treat, cure, or prevent any disease or medical condition."
+                        )
+                        disclaimerRow(
+                            body: "Information from Almond is for ",
+                            bold: "general wellness purposes only",
+                            tail: " and should not replace professional medical advice. Always consult a qualified healthcare professional."
+                        )
+                        disclaimerRow(
+                            body: "If you believe you are experiencing a medical emergency, ",
+                            bold: "contact emergency services immediately."
+                        )
+                    }
+                    .padding(20)
+                    .background(Color.almondCreamTint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.almondEspresso.opacity(0.08), lineWidth: 1)
+                    )
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+            }
 
-                bottomBar
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
+            VStack(spacing: 0) {
+                Divider()
+                    .overlay(Color.almondEspresso.opacity(0.08))
+
+                HStack(spacing: 12) {
+                    Toggle(isOn: $agreed) {
+                        Text("I understand and agree.")
+                            .font(Font.poppins(.bold, size: 14))
+                            .foregroundStyle(Color.almondInk)
+                    }
+                    .toggleStyle(CheckboxToggleStyle())
+
+                    Spacer()
+
+                    OnboardingNextButton(action: onNext, disabled: !agreed)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
             }
         }
     }
 
-    private var bottomBar: some View {
-        HStack(spacing: 12) {
-            Toggle(isOn: $agreed) {
-                Text("I understand and agree.")
-                    .font(Font.poppins(.bold, size: 14))
-                    .foregroundStyle(Color.almondInk)
-            }
-            .toggleStyle(CheckboxToggleStyle())
-
-            Spacer()
-
-            OnboardingNextButton(action: onNext, disabled: !agreed)
+    @ViewBuilder
+    private func disclaimerRow(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("·")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Color.almondCocoa)
+                .frame(width: 8)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.labelSecondary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var disclaimerAttributedString: AttributedString {
-        let size: CGFloat = 14
-        let regular = Font.poppins(.regular, size: size)
-        let semiBold = Font.poppins(.semiBold, size: size)
-        let extraBold = Font.poppins(.extraBold, size: size)
-        let ink = Color.almondInk
-
-        func r(_ text: String) -> AttributedString {
-            var s = AttributedString(text)
-            s.font = regular
-            s.foregroundColor = ink
-            return s
+    @ViewBuilder
+    private func disclaimerRow(body: String, bold: String, tail: String = "") -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("·")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Color.almondCocoa)
+                .frame(width: 8)
+            let bodyText = Text(body)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.labelSecondary)
+            let boldText = Text(bold)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.almondInk)
+            let tailText = Text(tail)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.labelSecondary)
+            Text("\(bodyText)\(boldText)\(tailText)")
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
-
-        func b(_ text: String) -> AttributedString {
-            var s = AttributedString(text)
-            s.font = semiBold
-            s.foregroundColor = ink
-            return s
-        }
-
-        func bullet() -> AttributedString {
-            var s = AttributedString("\n*\n")
-            s.font = extraBold
-            s.foregroundColor = ink
-            return s
-        }
-
-        var result = AttributedString()
-        result += r("Almond provides wellness insights and preventative cardiovascular guidance based on wearable and health data.")
-        result += bullet()
-        result += r("Almond is ")
-        result += b("not a medical device")
-        result += r(" and ")
-        result += b("does not diagnose, treat, cure, or prevent")
-        result += r(" any disease or medical condition.")
-        result += bullet()
-        result += r("The information provided by Almond is intended for ")
-        result += b("general wellness purposes only")
-        result += r(" and ")
-        result += b("should not replace")
-        result += r(" professional medical advice, diagnosis, or treatment. ")
-        result += b("Always consult a qualified healthcare professional")
-        result += r(" regarding any questions or concerns about your health.")
-        result += bullet()
-        result += r("If you believe you may be experiencing a medical emergency, ")
-        result += b("contact emergency services or seek immediate medical attention.")
-        return result
     }
 }
 
@@ -117,13 +124,16 @@ private struct CheckboxToggleStyle: ToggleStyle {
         } label: {
             HStack(alignment: .center, spacing: 10) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 3)
-                        .stroke(Color.almondInk, lineWidth: 1.5)
-                        .frame(width: 18, height: 18)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(Color.almondEspresso.opacity(0.35), lineWidth: 1.5)
+                        .frame(width: 20, height: 20)
                     if configuration.isOn {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.almondCocoa)
+                            .frame(width: 20, height: 20)
                         Image(systemName: "checkmark")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.almondInk)
+                            .foregroundStyle(.white)
                     }
                 }
                 configuration.label
@@ -134,5 +144,5 @@ private struct CheckboxToggleStyle: ToggleStyle {
 }
 
 #Preview {
-    OnboardingPage4View(onNext: {}, onSkip: {})
+    OnboardingPage4View(onNext: {})
 }
