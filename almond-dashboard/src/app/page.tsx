@@ -7,7 +7,7 @@ import { VitalityTimeline } from "@/components/VitalityTimeline";
 import { Card, CardEyebrow, CardKicker, CardTitle } from "@/components/Card";
 import { getDashboardData } from "@/lib/api";
 import { vitalityTimeline } from "@/lib/derive";
-import { PATIENT } from "@/lib/fixtures";
+import { PATIENT } from "@/lib/patient";
 import { fmtAbsoluteDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,12 @@ export default async function Page() {
   const { latest, history } = dashboard;
 
   if (!latest) {
-    return <EmptyState />;
+    return (
+      <div>
+        <SiteHeader lastSync={null} />
+        <EmptyState />
+      </div>
+    );
   }
 
   const lastSync = new Date(latest.computed_at);
@@ -48,37 +53,17 @@ export default async function Page() {
             <p className="mt-3 max-w-[58ch] text-[15px] leading-relaxed text-label-secondary">
               A synthesized view across NHANES-trained survival modeling,
               ACC/AHA-validated risk equations, and the live wearable
-              telemetry uploaded from her Apple Watch.
+              telemetry uploaded from {PATIENT.preferred_name}&rsquo;s Apple Watch.
               Every figure on this page is sourced from the most recent
               sync at <span className="font-mono text-ink">{fmtAbsoluteDate(lastSync)}</span>.
             </p>
           </div>
-          <aside className="grid grid-cols-2 gap-x-8 gap-y-2 text-[12.5px] leading-snug">
+          <aside className="grid grid-cols-1 gap-y-2 text-[12.5px] leading-snug">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-label-tertiary">
                 Patient
               </p>
               <p className="mt-1 text-ink">{PATIENT.full_name}</p>
-            </div>
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-label-tertiary">
-                Clinician
-              </p>
-              <p className="mt-1 text-ink">{PATIENT.primary_clinician}</p>
-            </div>
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-label-tertiary">
-                Enrolled
-              </p>
-              <p className="mt-1 font-mono tabular-nums text-ink">
-                {fmtAbsoluteDate(new Date(PATIENT.enrolled_at))}
-              </p>
-            </div>
-            <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-label-tertiary">
-                MRN
-              </p>
-              <p className="mt-1 font-mono tabular-nums text-ink">{PATIENT.mrn}</p>
             </div>
           </aside>
         </div>
@@ -146,10 +131,11 @@ function EmptyState() {
         No telemetry yet
       </h1>
       <p className="mt-4 max-w-[52ch] text-[15px] leading-relaxed text-label-secondary">
-        The patient hasn&rsquo;t synchronized any HealthKit data through the iOS
-        app. As soon as the first <span className="font-mono">POST /input</span>
-        {" "}lands, this dashboard will populate with the current vitality score,
-        validated risk panel, and the model synthesis.
+        {PATIENT.full_name} hasn&rsquo;t synchronized any HealthKit data
+        through the iOS app. As soon as the first
+        {" "}<span className="font-mono">POST /input</span> lands, this
+        dashboard will populate with the current vitality score, validated
+        risk panel, and the model synthesis.
       </p>
     </main>
   );
