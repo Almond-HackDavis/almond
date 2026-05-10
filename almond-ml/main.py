@@ -91,7 +91,22 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_exc(_: Request, exc: RequestValidationError):
+    async def _validation_exc(req: Request, exc: RequestValidationError):
+        # Log the offending fields and a truncated body preview so iOS team
+        # can debug without opening the ngrok inspector. Body preview is
+        # capped at 1 KB to avoid leaking giant HK arrays into the log.
+        try:
+            raw = await req.body()
+            body_preview = raw[:1024].decode("utf-8", errors="replace")
+            if len(raw) > 1024:
+                body_preview += f"  …[+{len(raw) - 1024} bytes truncated]"
+        except Exception:
+            body_preview = "<unavailable>"
+        for e in exc.errors():
+            loc = ".".join(str(p) for p in e.get("loc", []))
+            log.warning("422 validation error  loc=%s  type=%s  msg=%s  input=%r",
+                        loc, e.get("type"), e.get("msg"), e.get("input"))
+        log.warning("422 body preview: %s", body_preview)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={

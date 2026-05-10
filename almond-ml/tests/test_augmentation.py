@@ -289,3 +289,100 @@ class TestTopDrivers:
                               _samples(rhr=50, hrv=90, vo2=55, walking_hr=85))
         contribs = [abs(d["contribution_pts"]) for d in out["top_drivers"]]
         assert contribs == sorted(contribs, reverse=True)
+
+
+# ── D. Clinical-equation integration ───────────────────────────────────────
+
+
+def _full_clinical_onboarding(age: int = 55, sex: str = "M",
+                              weight: float = 75.0, height: float = 178.0,
+                              **clinical) -> dict:
+    """Onboarding with full clinical inputs so ASCVD/Framingham/LE8 fire.
+
+    Defaults represent a generally-healthy mid-50s adult; pass kwargs to
+    override individual clinical fields for diff tests.
+    """
+    return {
+        "age": age, "sex": sex,
+        "height_cm": height, "weight_kg": weight,
+        "smoking":            clinical.get("smoking",            False),
+        "diabetes":           clinical.get("diabetes",           False),
+        "family_history_cvd": clinical.get("family_history_cvd", False),
+        "on_bp_medication":   clinical.get("on_bp_medication",   False),
+        "race_ethnicity":     clinical.get("race_ethnicity",     None),
+        "systolic_bp":        clinical.get("systolic_bp",        118),
+        "total_cholesterol":  clinical.get("total_cholesterol",  180),
+        "hdl_cholesterol":    clinical.get("hdl_cholesterol",    55),
+    }
+
+
+class TestClinicalEquationIntegration:
+    def test_equations_fire_with_full_onboarding(self):
+        """When SBP/cholesterol/HDL are supplied, ASCVD/Framingham/LE8
+        must populate `_eq_*` keys in the features dict."""
+        out = ml.run_pipeline(_full_clinical_onboarding(),
+                              _samples(steps=8000, kcal=400, excm=30, sleep_min=460))
+        feats = out["features"]
+        assert feats["_eq_ascvd_risk_10yr"] is not None
+        assert feats["_eq_framingham_risk_10yr"] is not None
+        assert feats["_eq_le8"] is not None and feats["_eq_le8"]["score"] >= 80
+
+    def test_smoker_lower_vitality_than_nonsmoker(self):
+        """ASCVD + Framingham + LE8 all penalize smoking. With identical
+        wearable profile, a smoker must score lower than a nonsmoker."""
+        sa = _samples(steps=8000, kcal=400, excm=30, sleep_min=460)
+        non = ml.run_pipeline(_full_clinical_onboarding(smoking=False), sa)["vitality"]
+        smk = ml.run_pipeline(_full_clinical_onboarding(smoking=True),  sa)["vitality"]
+        assert smk < non - 1.0, f"smoker {smk} should score lower than nonsmoker {non}"
+
+    def test_high_cholesterol_lowers_vitality(self):
+        """Total cholesterol 280 vs 160, holding everything else equal."""
+        sa = _samples(steps=8000, kcal=400, excm=30, sleep_min=460)
+        low  = ml.run_pipeline(_full_clinical_onboarding(total_cholesterol=160), sa)["vitality"]
+        high = ml.run_pipeline(_full_clinical_onboarding(total_cholesterol=280), sa)["vitality"]
+        assert high < low, f"high chol {high} should score lower than low chol {low}"
+
+    def test_high_sbp_lowers_vitality(self):
+        sa = _samples(steps=8000, kcal=400, excm=30, sleep_min=460)
+        norm = ml.run_pipeline(_full_clinical_onboarding(systolic_bp=115), sa)["vitality"]
+        hi   = ml.run_pipeline(_full_clinical_onboarding(systolic_bp=165), sa)["vitality"]
+        assert hi < norm, f"SBP 165 ({hi}) should score lower than SBP 115 ({norm})"
+
+    def test_diabetic_lower_than_nondiabetic(self):
+        sa = _samples(steps=8000, kcal=400, excm=30, sleep_min=460)
+        non = ml.run_pipeline(_full_clinical_onboarding(diabetes=False), sa)["vitality"]
+        dm  = ml.run_pipeline(_full_clinical_onboarding(diabetes=True),  sa)["vitality"]
+        assert dm < non, f"diabetic {dm} should score lower than nondiabetic {non}"
+
+    def test_partial_onboarding_does_not_silently_fire_equations(self):
+        """Default onboarding with chol/sbp = None must NOT fire ASCVD or
+        Framingham (their published applicability requires the inputs).
+        FINDRISC/LE8 may still surface in `_eq_*` for display but should
+        not enter composite_bonus (coverage gates them out)."""
+        out = ml.run_pipeline(_onboarding(),  # no clinical inputs
+                              _samples(steps=8000, kcal=400, excm=30, sleep_min=460))
+        feats = out["features"]
+        assert feats["_eq_ascvd_risk_10yr"] is None
+        assert feats["_eq_framingham_risk_10yr"] is None
+        # No equation-named entries in top_drivers when equations didn't fire.
+        eq_names = {"ascvd", "framingham", "findrisc", "le8"}
+        for d in out["top_drivers"]:
+            assert d["feature"] not in eq_names
+
+    def test_equations_can_appear_in_top_drivers_when_dominant(self):
+        """A 60yo smoker with high cholesterol + high SBP should have ASCVD
+        as one of the top drivers — its contribution should be strongly
+        negative."""
+        out = ml.run_pipeline(
+            _full_clinical_onboarding(
+                age=60, sex="M",
+                smoking=True, total_cholesterol=280, hdl_cholesterol=35,
+                systolic_bp=160, on_bp_medication=False,
+            ),
+            _samples(steps=4000, kcal=200, excm=10, sleep_min=420),
+        )
+        eq_names = {"ascvd", "framingham", "findrisc", "le8"}
+        eq_drivers = [d for d in out["top_drivers"] if d["feature"] in eq_names]
+        assert eq_drivers, "expected at least one clinical equation in top_drivers"
+        for d in eq_drivers:
+            assert d["direction"] == "worse"
