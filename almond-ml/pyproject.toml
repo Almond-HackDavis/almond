@@ -4,45 +4,51 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "almond-ml"
-version = "0.1.0"
-description = "almond backend service — FastAPI + MongoDB. ML/Gemini live in a separate worker process out of scope for this repo."
+version = "0.2.0"
+description = "almond sync ML pipeline backend — POST /input runs Cox + Gemma and persists to MongoDB"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
+    # HTTP layer.
     "fastapi",
     "uvicorn[standard]",
     "pydantic>=2",
-    "pydantic-settings>=2",
-    "pymongo>=4.13",
-    "dnspython>=2.6",  # Atlas SRV records; transitive of pymongo but pinned for clarity.
-    "beanie>=2.1",
-    "pyjwt[crypto]>=2.8",
     "python-multipart",
+
+    # Mongo layer (motor was deprecated 14 May 2026).
+    "pymongo>=4.13",
+    "dnspython>=2.6",
+    "beanie>=2.1",
+
+    # ML layer — load + predict from the trained Cox pkl.
+    "scikit-survival>=0.27",
+    "scikit-learn>=1.8,<1.9",
+    "numpy>=2.4",
+    "pandas>=3.0",
+    "scipy>=1.17",
+    "joblib>=1.5",
+
+    # LLM layer — Gemma 3 27B via Google's GenAI SDK.
+    "google-genai>=1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
-    "pytest-asyncio>=0.23",
+    "pytest>=9",
+    "pytest-asyncio>=1.0",
     "mongomock-motor",
     "httpx",        # FastAPI TestClient backend
-    "cryptography", # for minting test RSA keys in Apple JWKS fixtures
 ]
 
 [tool.setuptools]
-# Flat module layout per AGENTS.md mono-repo description.
-py-modules = ["main", "schemas", "db", "auth"]
+py-modules = ["main", "schemas", "db", "ml", "gemma"]
 packages = ["routes"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-q -ra"
-markers = [
-    "slow: marks tests that hit a real container or external service",
-]
 filterwarnings = [
     "ignore::DeprecationWarning",
-    # Beanie + pydantic v2 emit some PydanticDeprecatedSince20 noise on import.
     "ignore::PendingDeprecationWarning",
 ]
