@@ -1,32 +1,104 @@
-"""Pydantic v2 models — single source of truth for every JSON shape on the wire.
+"""Pydantic v2 wire schemas for the single sync-pipeline backend.
 
-Mirrors AGENTS.md ## API contracts, with these task-mandated overrides:
+Two endpoints:
 
-  1. POST /healthkit response is `{upload_id, received_at, status="pending"}`,
-     not `{upload_id, received_at, processed=true}`. Processing is non-blocking;
-     the worker fills it in later.
-  2. GET /risk supports an optional `?upload_id=` query.
-  3. nhanes_mortality_2yr (NOT nhanes_mortality_10yr) per the Phase-1 spec lock.
+  POST /input   InputRequest    →  OutputDocument
+  GET  /output                  →  OutputDocument  (the latest, _id="current")
 
-iOS team: this file is the contract. Add Codable structs that mirror these
-1:1 in almond-app/Almond/Networking/.
+The wire format is intentionally narrow: validate the outer shape, treat
+the per-day arrays as opaque dicts where reasonable, and let `ml.py`
+interpret them.
 """
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# ── Common building blocks ───────────────────────────────────────────────────
+# ── /input request ──────────────────────────────────────────────────────────
 
-UploadStatus = Literal["pending", "scoring", "recommending", "done", "failed"]
+
+class Onboarding(BaseModel):
+    age: int = Field(..., ge=18, le=100)
+    sex: Literal["M", "F"]
+    height_cm: float = Field(..., ge=100.0, le=250.0)
+    weight_kg: float = Field(..., ge=30.0, le=250.0)
+
+    smoking: Optional[bool] = None
+    diabetes: Optional[bool] = None
+    family_history_cvd: Optional[bool] = None
+    on_bp_medication: Optional[bool] = None
+    race_ethnicity: Optional[Literal["white", "black", "asian", "hispanic", "other"]] = None
+    systolic_bp: Optional[int] = Field(None, ge=70, le=250)
+    total_cholesterol: Optional[int] = Field(None, ge=80, le=400)
+    hdl_cholesterol: Optional[int] = Field(None, ge=10, le=150)
+
+
+class Samples(BaseModel):
+    """HealthKit-derived per-day arrays. Inner shapes are dict[str, Any] —
+    `ml.engineer_features` reads the keys it needs and ignores the rest.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    steps_daily: list[dict[str, Any]] = Field(default_factory=list)
+    active_energy_daily_kcal: list[dict[str, Any]] = Field(default_factory=list)
+    exercise_minutes_daily: list[dict[str, Any]] = Field(default_factory=list)
+    sleep_sessions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class InputRequest(BaseModel):
+    onboarding: Onboarding
+    samples: Samples
+
+
+# ── /output document ────────────────────────────────────────────────────────
+
+
+class ScoreValue(BaseModel):
+    """One row of the `scores` block.
+
+    Modeled as a free-form dict to support per-score field shapes that
+    don't share a common schema:
+      vitality_score:       {value, max}
+      nhanes_mortality_2yr: {value, ci_low, ci_high}      (CI fields nullable)
+
+    The route handler builds these dicts explicitly so we can match the
+    wire spec exactly without heuristic field-stripping.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    value: float
+
+
+class ModelMetadata(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())   # allow `model_id`
+
+    model_id: str
+    prompt_template_version: str
+    llm_model: str
+    horizon_months: int
+
+
+class OutputDocument(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(..., alias="_id")
+    computed_at: datetime
+    input_uploaded_at: datetime
+
+    scores: dict[str, dict[str, Any]]
+    gemma_summary: str
+    disclaimer: str
+    model_metadata: ModelMetadata
+
+
+# ── Standard error envelope ─────────────────────────────────────────────────
 
 
 class APIError(BaseModel):
-    """Standard error envelope: {"error": {"code", "message", "details"}}."""
-
     code: str
     message: str
     details: dict[str, Any] = Field(default_factory=dict)
@@ -34,181 +106,3 @@ class APIError(BaseModel):
 
 class APIErrorResponse(BaseModel):
     error: APIError
-
-
-# ── POST /auth/login ─────────────────────────────────────────────────────────
-
-
-class AuthLoginRequest(BaseModel):
-    apple_identity_token: str = Field(..., min_length=20)
-
-
-class AuthLoginResponse(BaseModel):
-    user_id: UUID
-    session_token: str
-    is_new_user: bool
-    needs_onboarding: bool
-
-
-# ── POST /onboarding ─────────────────────────────────────────────────────────
-
-
-class OnboardingRequest(BaseModel):
-    age: int = Field(..., ge=18, le=100)
-    sex: Literal["M", "F"]
-    height_cm: float = Field(..., ge=100, le=250)
-    weight_kg: float = Field(..., ge=30, le=250)
-    smoking: bool
-    diabetes: bool
-    family_history_cvd: bool
-    race_ethnicity: Optional[Literal["white", "black", "asian", "hispanic", "other"]] = None
-    systolic_bp: Optional[int] = Field(None, ge=70, le=250)
-    total_cholesterol: Optional[int] = Field(None, ge=80, le=400)
-    hdl_cholesterol: Optional[int] = Field(None, ge=10, le=150)
-    on_bp_medication: Optional[bool] = None
-
-
-class OnboardingResponse(BaseModel):
-    onboarding_id: UUID
-    completed_at: datetime
-
-
-# ── POST /healthkit ──────────────────────────────────────────────────────────
-
-
-class HealthKitUploadRequest(BaseModel):
-    """Outer envelope. `samples` is intentionally typed as `dict` — the backend
-    treats it as opaque; only the worker interprets the wearable payload.
-    """
-
-    model_config = ConfigDict(extra="allow")  # keep any future fields iOS adds
-
-    uploaded_at: datetime
-    window_start: datetime
-    window_end: datetime
-    samples: dict[str, Any]
-
-
-class HealthKitUploadResponse(BaseModel):
-    """Override of AGENTS.md: returns `status` instead of `processed`.
-
-    iOS should poll GET /risk?upload_id=<id> until `status == "done"`.
-    """
-
-    upload_id: UUID
-    received_at: datetime
-    status: UploadStatus
-
-
-# ── GET /risk ────────────────────────────────────────────────────────────────
-
-
-class TopDriver(BaseModel):
-    feature: str
-    value: float
-    population_norm: float
-    direction: Literal["worse", "better"]
-    weight: float
-    human_label: str
-    source: Literal["cox", "augmentation"]
-
-
-class GeminiActionItem(BaseModel):
-    finding: str
-    action: str
-    rationale: str
-
-
-class GeminiRecommendation(BaseModel):
-    summary: str
-    actions: list[GeminiActionItem]
-    disclaimer: str
-
-
-class RiskResponseFull(BaseModel):
-    """Status == done — the full prediction payload."""
-
-    upload_id: UUID
-    status: Literal["done"] = "done"
-    computed_at: datetime
-    scores: dict[str, dict[str, Any]]
-    top_drivers: list[TopDriver]
-    gemini_recommendation: Optional[GeminiRecommendation] = None
-    model_metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class RiskResponsePending(BaseModel):
-    """Status != done — iOS should keep polling."""
-
-    upload_id: UUID
-    status: Literal["pending", "scoring", "recommending", "failed"]
-
-
-# Discriminated union for OpenAPI clarity. FastAPI's response_model can use
-# either the union directly or branch in the handler — handlers branch.
-RiskResponse = RiskResponseFull | RiskResponsePending
-
-
-# ── GET /history ─────────────────────────────────────────────────────────────
-
-
-class HistoryResponse(BaseModel):
-    user_id: UUID
-    days: int
-    series: dict[str, list[dict[str, Any]]]
-
-
-# ── Worker endpoints ─────────────────────────────────────────────────────────
-
-
-class WorkerUploadSummary(BaseModel):
-    upload_id: UUID
-    user_id: UUID
-    uploaded_at: datetime
-
-
-class WorkerUploadList(BaseModel):
-    uploads: list[WorkerUploadSummary]
-
-
-class WorkerUploadDetail(BaseModel):
-    """Full payload for the worker, with the user's onboarding doc embedded.
-
-    Embedding onboarding saves the worker a second round-trip to look up
-    age/sex/etc. when running the Cox model + clinical equations.
-    """
-
-    upload_id: UUID
-    user_id: UUID
-    uploaded_at: datetime
-    window_start: datetime
-    window_end: datetime
-    payload: dict[str, Any]
-    onboarding: Optional[dict[str, Any]]
-    status: UploadStatus
-
-
-class WorkerResultRequest(BaseModel):
-    """Outer-shape validation only — the worker's contract with iOS for the
-    inner shapes is intentionally not enforced here so the worker can iterate
-    without breaking the backend.
-    """
-
-    scores: dict[str, dict[str, Any]]
-    top_drivers: list[dict[str, Any]]
-    gemini_recommendation: Optional[dict[str, Any]] = None
-    model_metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class WorkerResultResponse(BaseModel):
-    prediction_id: UUID
-
-
-class WorkerFailRequest(BaseModel):
-    error: str
-    stage: Literal["scoring", "recommending"]
-
-
-class WorkerFailResponse(BaseModel):
-    upload_id: UUID
-    status: Literal["failed"]

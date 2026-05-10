@@ -1,12 +1,17 @@
-"""FastAPI app entry — thin, just lifespan + router wiring.
+"""FastAPI app entry — single sync-pipeline backend.
+
+POST /input  → Cox + Gemma pipeline → write outputs → return result
+GET  /output → read the latest "current" output document
+GET  /healthz → liveness probe (does NOT touch Mongo or load the Cox model)
 
 Run locally:
 
     cd almond-ml
     uvicorn main:app --reload
 
-Tests build their own app instance via `create_app()` and override the lifespan
-to point at a mongomock-backed AsyncMongoClient.
+The trained Cox + percentile lookup load lazily on first prediction (see
+`ml.load_artifacts`). The Mongo connection opens at startup via the lifespan
+handler.
 """
 from __future__ import annotations
 
@@ -20,15 +25,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+import ml
 from db import close_db, init_db
-from routes import auth_routes, healthkit_routes, onboarding_routes, worker_routes
+from routes import input_routes
 
 log = logging.getLogger("almond")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Open Mongo at startup, close at shutdown."""
+    """Open Mongo + warm the Cox model at startup, close on shutdown."""
     uri = os.environ.get("MONGODB_URI")
     db_name = os.environ.get("MONGODB_DB", "almond")
     if not uri:
@@ -36,6 +42,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "MONGODB_URI is not set. Copy .env.example to .env and fill it in."
         )
     await init_db(uri, db_name)
+    # Eagerly load the Cox pkl so the first request doesn't pay for cold start.
+    ml.load_artifacts()
     try:
         yield
     finally:
@@ -46,27 +54,23 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
     """Build the FastAPI app. Tests pass `with_lifespan=False`."""
     kwargs = {"lifespan": lifespan} if with_lifespan else {}
     app = FastAPI(
-        title="almond backend",
-        version="0.1.0",
+        title="almond ml service",
+        version="0.2.0",
         description=(
-            "JSON in / JSON out service for the almond iOS app. ML inference "
-            "and Gemini recommendations are handled by a separate offline "
-            "worker process out of scope for this repo."
+            "Sync Cox + Gemma pipeline. POST /input runs ML inference and a "
+            "Gemma-generated summary, persists to MongoDB, and returns the "
+            "result document."
         ),
         **kwargs,  # type: ignore[arg-type]
     )
 
-    app.include_router(auth_routes.router)
-    app.include_router(onboarding_routes.router)
-    app.include_router(healthkit_routes.router)
-    app.include_router(worker_routes.router)
+    app.include_router(input_routes.router)
 
     @app.get("/healthz", tags=["meta"])
     async def healthz() -> dict[str, bool]:
-        """Liveness probe — does NOT touch Mongo, intentionally."""
+        """Liveness probe — does NOT touch Mongo or the Cox model."""
         return {"ok": True}
 
-    # Uniform error envelope. AGENTS.md → ## Error responses.
     @app.exception_handler(StarletteHTTPException)
     async def _http_exc(_: Request, exc: StarletteHTTPException):
         if isinstance(exc.detail, dict) and "error" in exc.detail:
