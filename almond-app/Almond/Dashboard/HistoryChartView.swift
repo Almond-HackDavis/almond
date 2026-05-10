@@ -30,18 +30,28 @@ struct HistoryChartView: View {
                     .padding(.vertical, 8)
                 }
 
-                Group {
+                ScrollView {
                     if vm.isLoading && vm.snapshot == nil {
-                        ProgressView("Loading trends…")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .tint(Color.brandPrimary)
+                        VStack(spacing: 14) {
+                            ProgressView().tint(Color.almondCocoa)
+                            Text("LOADING")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.labelTertiary)
+                                .kerning(2.0)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 60)
                     } else if let snap = vm.snapshot {
                         chartContent(snap: snap)
                     } else {
-                        ContentUnavailableView("No data", systemImage: "chart.xyaxis.line")
+                        ContentUnavailableView(
+                            "No data",
+                            systemImage: "chart.xyaxis.line",
+                            description: Text("Allow health access in Settings → Privacy → Health → Almond.")
+                        )
+                        .padding(.top, 60)
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle("Trends")
         }
@@ -68,6 +78,7 @@ struct HistoryChartView: View {
                         .foregroundStyle(Color.chartSeries1.opacity(0.12))
                 }
             }
+            .frame(height: 260)
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                     AxisGridLine().foregroundStyle(Color.divider)

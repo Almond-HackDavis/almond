@@ -38,7 +38,7 @@ struct HealthQuestionnaireView: View {
                     Toggle("Family history of heart disease",  isOn: $vm.familyHistoryCvd)
                     Toggle("On blood pressure medication",    isOn: $vm.onBpMedication)
                 }
-                .tint(Color.brandPrimary)
+                .tint(Color.almondCocoa)
 
                 Section {
                     Picker("Race / ethnicity (optional)", selection: $vm.raceEthnicity) {
@@ -74,15 +74,16 @@ struct HealthQuestionnaireView: View {
                         Text("Get my health scores")
                             .frame(maxWidth: .infinity)
                             .fontWeight(.semibold)
-                            .foregroundStyle(Color.labelOnBrand)
+                            .foregroundStyle(Color.almondCreamBase)
                     }
                     .disabled(!vm.isValid)
-                    .listRowBackground(vm.isValid ? Color.brandPrimary : Color.brandPrimary.opacity(0.4))
+                    .listRowBackground(vm.isValid ? Color.almondCocoa : Color.almondCocoa.opacity(0.4))
                 }
             }
             .navigationTitle("Quick health check")
             .navigationBarTitleDisplayMode(.large)
-            .tint(Color.brandPrimary)
+            .tint(Color.almondCocoa)
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 

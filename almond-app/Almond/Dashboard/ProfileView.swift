@@ -1,5 +1,9 @@
 import SwiftUI
 
+private enum ProfileField: Hashable {
+    case heightCm, weightKg, systolicBp, totalCholesterol, hdlCholesterol
+}
+
 struct ProfileView: View {
     @AppStorage("ob.name")               private var name              = ""
     @AppStorage("ob.age")                private var age               = 30
@@ -14,6 +18,8 @@ struct ProfileView: View {
     @AppStorage("ob.total_cholesterol")  private var totalCholesterol  = 0
     @AppStorage("ob.hdl_cholesterol")    private var hdlCholesterol    = 0
     @AppStorage("ob.race_ethnicity")     private var raceEthnicity     = ""
+
+    @FocusState private var focusedField: ProfileField?
 
     #if DEBUG
     @AppStorage("onboarding_complete") private var onboardingComplete = false
@@ -87,6 +93,7 @@ struct ProfileView: View {
                             TextField("cm", value: $heightCm, format: .number)
                                 .multilineTextAlignment(.trailing)
                                 .keyboardType(.decimalPad)
+                                .focused($focusedField, equals: .heightCm)
                             Text("cm").foregroundStyle(Color.labelTertiary)
                         }
                     }
@@ -95,6 +102,7 @@ struct ProfileView: View {
                             TextField("kg", value: $weightKg, format: .number)
                                 .multilineTextAlignment(.trailing)
                                 .keyboardType(.decimalPad)
+                                .focused($focusedField, equals: .weightKg)
                             Text("kg").foregroundStyle(Color.labelTertiary)
                         }
                     }
@@ -123,9 +131,9 @@ struct ProfileView: View {
 
                 // MARK: Clinical values
                 Section {
-                    OptionalIntRow(label: "Systolic BP",       unit: "mmHg",  value: $systolicBp)
-                    OptionalIntRow(label: "Total cholesterol", unit: "mg/dL", value: $totalCholesterol)
-                    OptionalIntRow(label: "HDL cholesterol",   unit: "mg/dL", value: $hdlCholesterol)
+                    OptionalIntRow(label: "Systolic BP",       unit: "mmHg",  value: $systolicBp,        focus: $focusedField, field: .systolicBp)
+                    OptionalIntRow(label: "Total cholesterol", unit: "mg/dL", value: $totalCholesterol,  focus: $focusedField, field: .totalCholesterol)
+                    OptionalIntRow(label: "HDL cholesterol",   unit: "mg/dL", value: $hdlCholesterol,    focus: $focusedField, field: .hdlCholesterol)
                 } header: {
                     Text("Clinical values (optional)")
                 } footer: {
@@ -143,7 +151,21 @@ struct ProfileView: View {
                 #endif
             }
             .navigationTitle("Profile")
-            .tint(Color.brandPrimary)
+            .tint(Color.almondCocoa)
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                if focusedField != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder),
+                                to: nil, from: nil, for: nil
+                            )
+                            focusedField = nil
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -154,6 +176,8 @@ private struct OptionalIntRow: View {
     let label: String
     let unit: String
     @Binding var value: Int
+    var focus: FocusState<ProfileField?>.Binding
+    let field: ProfileField
 
     var body: some View {
         LabeledContent(label) {
@@ -161,6 +185,7 @@ private struct OptionalIntRow: View {
                 TextField("—", value: $value, format: .number)
                     .multilineTextAlignment(.trailing)
                     .keyboardType(.numberPad)
+                    .focused(focus, equals: field)
                 Text(unit).foregroundStyle(Color.labelTertiary)
             }
         }

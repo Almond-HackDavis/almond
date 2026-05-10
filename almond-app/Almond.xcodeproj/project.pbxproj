@@ -33,7 +33,6 @@
 		CC000000000000000000CC0C /* MongoDBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0B /* MongoDBService.swift */; };
 		CC000000000000000000CC0E /* MongoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0D /* MongoModels.swift */; };
 		8FC34095E1BB44A4A909F0B2 /* Font+Almond.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E215547174402A8351773C /* Font+Almond.swift */; };
-		427918C903984F68860441CF /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE12C8BEF76C44E0BDD1EBB3 /* SplashView.swift */; };
 		1BA1221847564151BBF30EE0 /* HealthQuestionnaireView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D68F096C67814811BF53C29D /* HealthQuestionnaireView.swift */; };
 		D879762845164DC5B871CE28 /* OnboardingHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47F5BD62378540AC9F78A9D7 /* OnboardingHeader.swift */; };
 		1E2D952BE54A4D6D825FF7BA /* OnboardingTagline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D17B0A26F78D40E6A30394AB /* OnboardingTagline.swift */; };
@@ -82,7 +81,6 @@
 		CC000000000000000000CC0B /* MongoDBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoDBService.swift; sourceTree = "<group>"; };
 		CC000000000000000000CC0D /* MongoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoModels.swift; sourceTree = "<group>"; };
 		23E215547174402A8351773C /* Font+Almond.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Font+Almond.swift"; sourceTree = "<group>"; };
-		DE12C8BEF76C44E0BDD1EBB3 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SplashView.swift"; sourceTree = "<group>"; };
 		D68F096C67814811BF53C29D /* HealthQuestionnaireView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HealthQuestionnaireView.swift"; sourceTree = "<group>"; };
 		47F5BD62378540AC9F78A9D7 /* OnboardingHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingHeader.swift"; sourceTree = "<group>"; };
 		D17B0A26F78D40E6A30394AB /* OnboardingTagline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingTagline.swift"; sourceTree = "<group>"; };
@@ -162,7 +160,6 @@
 			isa = PBXGroup;
 			children = (
 				AA000000000000000000001D /* OnboardingView.swift */,
-				DE12C8BEF76C44E0BDD1EBB3 /* SplashView.swift */,
 				D68F096C67814811BF53C29D /* HealthQuestionnaireView.swift */,
 				3AD6AB797A3840B7ABE8DD25 /* Components */,
 				77E36EC54FB1463088EC4C0B /* Pages */,
@@ -364,7 +361,6 @@
 				AA0000000000000000000044 /* ProfileView.swift in Sources */,
 				AA0000000000000000000046 /* Color+Almond.swift in Sources */,
 				8FC34095E1BB44A4A909F0B2 /* Font+Almond.swift in Sources */,
-				427918C903984F68860441CF /* SplashView.swift in Sources */,
 				1BA1221847564151BBF30EE0 /* HealthQuestionnaireView.swift in Sources */,
 				D879762845164DC5B871CE28 /* OnboardingHeader.swift in Sources */,
 				1E2D952BE54A4D6D825FF7BA /* OnboardingTagline.swift in Sources */,
