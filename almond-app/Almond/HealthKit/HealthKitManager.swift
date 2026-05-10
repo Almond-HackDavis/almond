@@ -179,7 +179,6 @@ final class HealthKitManager {
 
         let dayFmt = DateFormatter()
         dayFmt.dateFormat = "yyyy-MM-dd"
-        dayFmt.timeZone = TimeZone(identifier: "UTC")!
 
         async let steps    = queryDailyQuantity(type: .stepCount,                unit: .count(),                             options: .cumulativeSum,   start: windowStart, end: now)
         async let energy   = queryDailyQuantity(type: .activeEnergyBurned,       unit: .kilocalorie(),                       options: .cumulativeSum,   start: windowStart, end: now)

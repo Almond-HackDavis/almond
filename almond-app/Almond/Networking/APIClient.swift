@@ -7,62 +7,27 @@ actor APIClient {
     private static let baseURL = "https://uncrippled-pisciculturally-leda.ngrok-free.dev"
     // ──────────────────────────────────────────────────────────────────────
 
-    private init() {
-        // Replace with Railway/Fly.io deployment URL before shipping.
-        self.baseURL = URL(string: "https://api.almond.app")!
-    }
+    // MARK: - User identity (no auth — stable UUID per device)
 
-    func setSessionToken(_ token: String) {
-        sessionToken = token
-    }
-
-    func clearSessionToken() {
-        sessionToken = nil
+    nonisolated static var userId: String {
+        let key = "app.user_id"
+        if let id = UserDefaults.standard.string(forKey: key) { return id }
+        let id = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(id, forKey: key)
+        return id
     }
 
     // MARK: - Endpoints
 
     /// POST /input — blocks ~3-5 s on the server and returns the finished OutputDocument directly.
-    func submitInput(samples: HealthKitSamples) async throws -> BridgeOutput {
-        let body = BridgeInputRequest(onboarding: buildOnboarding(), samples: samples)
+    func submitInput(healthKit: HealthKitUploadRequest) async throws -> BridgeOutput {
+        let body = BridgeInputRequest(userId: Self.userId, onboarding: buildOnboarding(), samples: healthKit.samples)
         return try await post(path: "/input", body: body)
     }
 
-    func submitOnboarding(_ request: OnboardingRequest) async throws -> OnboardingResponse {
-        return try await post(path: "/onboarding", body: request)
-    }
-
-    func uploadHealthKit(_ request: HealthKitUploadRequest) async throws -> HealthKitUploadResponse {
-        return try await post(path: "/healthkit", body: request)
-    }
-
-    /// GET /risk — optionally scoped to a specific upload_id for polling.
-    func getRisk(uploadId: String? = nil) async throws -> RiskPollResponse {
-        var path = "/risk"
-        if let id = uploadId { path += "?upload_id=\(id)" }
-        return try await get(path: path)
-    }
-
-    /// Polls GET /risk?upload_id=<id> every 5 s until status == "done" or 60 s elapses.
-    func pollRisk(uploadId: String) async throws -> RiskResponseFull {
-        let deadline = Date(timeIntervalSinceNow: 60)
-        while Date() < deadline {
-            let response = try await getRisk(uploadId: uploadId)
-            switch response {
-            case .done(let full):
-                return full
-            case .failed:
-                throw AlmondError.api(code: "processing_failed",
-                                      message: "Risk computation failed. Please try again.")
-            case .pending:
-                try await Task.sleep(nanoseconds: 5_000_000_000)
-            }
-        }
-        throw AlmondError.pollTimeout
-    }
-
-    func getHistory(days: Int = 90) async throws -> HistoryResponse {
-        return try await get(path: "/history?days=\(days)")
+    /// GET /output — returns the most recent cached result, or nil if none exists yet.
+    func fetchOutput() async throws -> BridgeOutput? {
+        return try await getOutput(path: "/output")
     }
 
     // MARK: - Private
@@ -98,34 +63,8 @@ actor APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
         req.httpBody = try JSONEncoder().encode(body)
-        return try await perform(req)
-    }
-
-    private func get<Response: Decodable>(path: String) async throws -> Response {
-        guard let url = URL(string: baseURL.absoluteString + path) else {
-            throw URLError(.badURL)
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        guard let token = sessionToken else { throw AlmondError.notAuthenticated }
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        return try await perform(req)
-    }
-
-    private func perform<Response: Decodable>(_ request: URLRequest) async throws -> Response {
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-
-        if http.statusCode == 401 {
-            let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
-            if envelope?.error.code == "session_expired" {
-                throw AlmondError.sessionExpired
-            }
-            throw AlmondError.notAuthenticated
-        }
-
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         guard (200..<300).contains(http.statusCode) else {
             let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
             throw AlmondError.api(

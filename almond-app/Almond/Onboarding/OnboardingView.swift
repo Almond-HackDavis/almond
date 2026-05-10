@@ -33,10 +33,10 @@ struct OnboardingView: View {
                 }
 
                 Section("Health history") {
-                    Toggle("Current smoker",                 isOn: $vm.smoking)
-                    Toggle("Type 2 diabetes",                isOn: $vm.diabetes)
-                    Toggle("Family history of heart disease", isOn: $vm.familyHistoryCvd)
-                    Toggle("On blood pressure medication",   isOn: $vm.onBpMedication)
+                    Toggle("Current smoker",                  isOn: $vm.smoking)
+                    Toggle("Type 2 diabetes",                 isOn: $vm.diabetes)
+                    Toggle("Family history of heart disease",  isOn: $vm.familyHistoryCvd)
+                    Toggle("On blood pressure medication",    isOn: $vm.onBpMedication)
                 }
                 .tint(Color.brandPrimary)
 
@@ -69,27 +69,14 @@ struct OnboardingView: View {
                     }
                 }
 
-                if let error = vm.submitError {
-                    Section {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(Color.riskHigh)
-                    }
-                }
-
                 Section {
                     Button(action: submit) {
-                        if vm.isSubmitting {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text("Get my health scores")
-                                .frame(maxWidth: .infinity)
-                                .fontWeight(.semibold)
-                                .foregroundStyle(Color.labelOnBrand)
-                        }
+                        Text("Get my health scores")
+                            .frame(maxWidth: .infinity)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(Color.labelOnBrand)
                     }
-                    .disabled(!vm.isValid || vm.isSubmitting)
+                    .disabled(!vm.isValid)
                     .listRowBackground(vm.isValid ? Color.brandPrimary : Color.brandPrimary.opacity(0.4))
                 }
             }
@@ -100,9 +87,7 @@ struct OnboardingView: View {
     }
 
     private func submit() {
-        Task {
-            let ok = await vm.submit()
-            if ok { onComplete() }
-        }
+        vm.save()
+        onComplete()
     }
 }

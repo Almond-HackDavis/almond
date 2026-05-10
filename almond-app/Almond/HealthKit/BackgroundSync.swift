@@ -28,11 +28,8 @@ enum BackgroundSync {
         let syncTask = Task {
             do {
                 let payload = try await HealthKitManager().buildUploadPayload()
-                let response = try await APIClient.shared.uploadHealthKit(payload)
-                // status == "pending" means processing is async — poll in background
-                if response.status != "failed" {
-                    _ = try? await APIClient.shared.pollRisk(uploadId: response.uploadId)
-                }
+                _ = try await APIClient.shared.submitInput(healthKit: payload)
+                // Fire-and-forget — result will be visible next time the app opens
                 task.setTaskCompleted(success: true)
             } catch {
                 task.setTaskCompleted(success: false)
