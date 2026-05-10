@@ -2,92 +2,45 @@ import SwiftUI
 
 struct OnboardingView: View {
     let onComplete: () -> Void
-    @StateObject private var vm = OnboardingViewModel()
+
+    @State private var page = 0
+    @State private var showQuestionnaire = false
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("About you") {
-                    LabeledContent("Name") {
-                        TextField("Your name", text: $vm.name)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    Stepper("Age: \(vm.age)", value: $vm.age, in: 18...100)
-                    Picker("Sex", selection: $vm.sex) {
-                        Text("Male").tag("M")
-                        Text("Female").tag("F")
-                    }
+        if showQuestionnaire {
+            HealthQuestionnaireView(onComplete: onComplete)
+        } else {
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    OnboardingPage1View(onNext: advance, onSkip: skipToQuestionnaire)
+                        .frame(width: geo.size.width)
+                    OnboardingPage2View(onNext: advance, onSkip: skipToQuestionnaire)
+                        .frame(width: geo.size.width)
+                    OnboardingPage3View(onNext: advance, onSkip: skipToQuestionnaire)
+                        .frame(width: geo.size.width)
+                    OnboardingPage4View(onNext: goToQuestionnaire, onSkip: skipToQuestionnaire)
+                        .frame(width: geo.size.width)
                 }
-
-                Section("Body measurements") {
-                    LabeledContent("Height (cm)") {
-                        TextField("e.g. 178", value: $vm.heightCm, format: .number)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                    }
-                    LabeledContent("Weight (kg)") {
-                        TextField("e.g. 75.5", value: $vm.weightKg, format: .number)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                    }
-                }
-
-                Section("Health history") {
-                    Toggle("Current smoker",                  isOn: $vm.smoking)
-                    Toggle("Type 2 diabetes",                 isOn: $vm.diabetes)
-                    Toggle("Family history of heart disease",  isOn: $vm.familyHistoryCvd)
-                    Toggle("On blood pressure medication",    isOn: $vm.onBpMedication)
-                }
-                .tint(Color.brandPrimary)
-
-                Section {
-                    Picker("Race / ethnicity (optional)", selection: $vm.raceEthnicity) {
-                        Text("Prefer not to say").tag(String?.none)
-                        Text("White").tag(String?.some("white"))
-                        Text("Black").tag(String?.some("black"))
-                        Text("Asian").tag(String?.some("asian"))
-                        Text("Hispanic").tag(String?.some("hispanic"))
-                        Text("Other").tag(String?.some("other"))
-                    }
-                }
-
-                Section("Optional clinical values") {
-                    LabeledContent("Systolic BP (mmHg)") {
-                        TextField("Optional", value: $vm.systolicBp, format: .number)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.numberPad)
-                    }
-                    LabeledContent("Total cholesterol (mg/dL)") {
-                        TextField("Optional", value: $vm.totalCholesterol, format: .number)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.numberPad)
-                    }
-                    LabeledContent("HDL cholesterol (mg/dL)") {
-                        TextField("Optional", value: $vm.hdlCholesterol, format: .number)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.numberPad)
-                    }
-                }
-
-                Section {
-                    Button(action: submit) {
-                        Text("Get my health scores")
-                            .frame(maxWidth: .infinity)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(Color.labelOnBrand)
-                    }
-                    .disabled(!vm.isValid)
-                    .listRowBackground(vm.isValid ? Color.brandPrimary : Color.brandPrimary.opacity(0.4))
-                }
+                .offset(x: -CGFloat(page) * geo.size.width)
+                .animation(.easeInOut(duration: 0.4), value: page)
             }
-            .navigationTitle("Quick health check")
-            .navigationBarTitleDisplayMode(.large)
-            .tint(Color.brandPrimary)
+            .clipped()
         }
     }
 
-    private func submit() {
-        vm.save()
-        onComplete()
+    private func advance() {
+        page += 1
+    }
+
+    private func goToQuestionnaire() {
+        withAnimation(.easeInOut(duration: 0.35)) {
+            showQuestionnaire = true
+        }
+    }
+
+    private func skipToQuestionnaire() {
+        withAnimation(.easeInOut(duration: 0.35)) {
+            showQuestionnaire = true
+        }
     }
 }

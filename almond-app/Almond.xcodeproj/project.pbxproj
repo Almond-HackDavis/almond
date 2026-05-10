@@ -32,6 +32,24 @@
 		CC000000000000000000CC0A /* MongoDBConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC09 /* MongoDBConfig.swift */; };
 		CC000000000000000000CC0C /* MongoDBService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0B /* MongoDBService.swift */; };
 		CC000000000000000000CC0E /* MongoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000000000000000CC0D /* MongoModels.swift */; };
+		8FC34095E1BB44A4A909F0B2 /* Font+Almond.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23E215547174402A8351773C /* Font+Almond.swift */; };
+		427918C903984F68860441CF /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE12C8BEF76C44E0BDD1EBB3 /* SplashView.swift */; };
+		1BA1221847564151BBF30EE0 /* HealthQuestionnaireView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D68F096C67814811BF53C29D /* HealthQuestionnaireView.swift */; };
+		D879762845164DC5B871CE28 /* OnboardingHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47F5BD62378540AC9F78A9D7 /* OnboardingHeader.swift */; };
+		1E2D952BE54A4D6D825FF7BA /* OnboardingTagline.swift in Sources */ = {isa = PBXBuildFile; fileRef = D17B0A26F78D40E6A30394AB /* OnboardingTagline.swift */; };
+		78973B9FF27C4DC9AF68DB27 /* OnboardingNextButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9139E10B85364CB48826F3F0 /* OnboardingNextButton.swift */; };
+		8E9DB88BA8DE45F3B73B7383 /* OnboardingPageDots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6437ED6D147B4F68BD3577D3 /* OnboardingPageDots.swift */; };
+		F78A0C354FCA44EF9B08770A /* OnboardingPage1View.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EC0D44E07F46BD9EF5BEDC /* OnboardingPage1View.swift */; };
+		C6CA212BB89E4FF5B819C416 /* OnboardingPage2View.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8BE52BD47704C23B9D53600 /* OnboardingPage2View.swift */; };
+		E2FD5A952C8946BDA21874AB /* OnboardingPage3View.swift in Sources */ = {isa = PBXBuildFile; fileRef = D495352ECDEB4F258A19F254 /* OnboardingPage3View.swift */; };
+		26D441A484624064AE90780A /* OnboardingPage4View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8C8534A80744CCA539F2E4 /* OnboardingPage4View.swift */; };
+		9E25117FB4FB45ABAC9BFB5E /* Poppins-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 1C0EE7D84CF14E35918CB970 /* Poppins-Regular.ttf */; };
+		5879E64CEE874CCFB2889014 /* Poppins-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = EE7CF5B0FDF84F489A1D84AA /* Poppins-Medium.ttf */; };
+		8AA2DE444283447EAB44065F /* Poppins-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C51FB5F344524D758E06FBEB /* Poppins-SemiBold.ttf */; };
+		2D6FD361D6634D62AC1B8549 /* Poppins-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 295BA0108F464FA4845023A9 /* Poppins-Bold.ttf */; };
+		C5D2670D2A08479B9E4BDC66 /* Poppins-ExtraBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2EBF90FF59414CF7A38B05AB /* Poppins-ExtraBold.ttf */; };
+		42EB31433021406CA5C2B7F7 /* Poppins-LightItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 8F29ED3216404F0EBF9CBEC0 /* Poppins-LightItalic.ttf */; };
+		98E5C38CDB574AB5BDB0EC76 /* Poppins-MediumItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D65F8451D8964F01B94C9F35 /* Poppins-MediumItalic.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -63,6 +81,24 @@
 		CC000000000000000000CC09 /* MongoDBConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoDBConfig.swift; sourceTree = "<group>"; };
 		CC000000000000000000CC0B /* MongoDBService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoDBService.swift; sourceTree = "<group>"; };
 		CC000000000000000000CC0D /* MongoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MongoModels.swift; sourceTree = "<group>"; };
+		23E215547174402A8351773C /* Font+Almond.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Font+Almond.swift"; sourceTree = "<group>"; };
+		DE12C8BEF76C44E0BDD1EBB3 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SplashView.swift"; sourceTree = "<group>"; };
+		D68F096C67814811BF53C29D /* HealthQuestionnaireView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HealthQuestionnaireView.swift"; sourceTree = "<group>"; };
+		47F5BD62378540AC9F78A9D7 /* OnboardingHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingHeader.swift"; sourceTree = "<group>"; };
+		D17B0A26F78D40E6A30394AB /* OnboardingTagline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingTagline.swift"; sourceTree = "<group>"; };
+		9139E10B85364CB48826F3F0 /* OnboardingNextButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingNextButton.swift"; sourceTree = "<group>"; };
+		6437ED6D147B4F68BD3577D3 /* OnboardingPageDots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingPageDots.swift"; sourceTree = "<group>"; };
+		C6EC0D44E07F46BD9EF5BEDC /* OnboardingPage1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingPage1View.swift"; sourceTree = "<group>"; };
+		E8BE52BD47704C23B9D53600 /* OnboardingPage2View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingPage2View.swift"; sourceTree = "<group>"; };
+		D495352ECDEB4F258A19F254 /* OnboardingPage3View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingPage3View.swift"; sourceTree = "<group>"; };
+		3F8C8534A80744CCA539F2E4 /* OnboardingPage4View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingPage4View.swift"; sourceTree = "<group>"; };
+		1C0EE7D84CF14E35918CB970 /* Poppins-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Poppins-Regular.ttf"; sourceTree = "<group>"; };
+		EE7CF5B0FDF84F489A1D84AA /* Poppins-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Poppins-Medium.ttf"; sourceTree = "<group>"; };
+		C51FB5F344524D758E06FBEB /* Poppins-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Poppins-SemiBold.ttf"; sourceTree = "<group>"; };
+		295BA0108F464FA4845023A9 /* Poppins-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Poppins-Bold.ttf"; sourceTree = "<group>"; };
+		2EBF90FF59414CF7A38B05AB /* Poppins-ExtraBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Poppins-ExtraBold.ttf"; sourceTree = "<group>"; };
+		8F29ED3216404F0EBF9CBEC0 /* Poppins-LightItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Poppins-LightItalic.ttf"; sourceTree = "<group>"; };
+		D65F8451D8964F01B94C9F35 /* Poppins-MediumItalic.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Poppins-MediumItalic.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,6 +162,10 @@
 			isa = PBXGroup;
 			children = (
 				AA000000000000000000001D /* OnboardingView.swift */,
+				DE12C8BEF76C44E0BDD1EBB3 /* SplashView.swift */,
+				D68F096C67814811BF53C29D /* HealthQuestionnaireView.swift */,
+				3AD6AB797A3840B7ABE8DD25 /* Components */,
+				77E36EC54FB1463088EC4C0B /* Pages */,
 				AA000000000000000000001E /* OnboardingViewModel.swift */,
 			);
 			path = Onboarding;
@@ -171,6 +211,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000045 /* Color+Almond.swift */,
+				A772DB4EA3304A75B5CE2B63 /* Fonts */,
+				23E215547174402A8351773C /* Font+Almond.swift */,
 			);
 			path = Design;
 			sourceTree = "<group>";
@@ -191,6 +233,42 @@
 				AA000000000000000000002A /* BackgroundTasks.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		3AD6AB797A3840B7ABE8DD25 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				47F5BD62378540AC9F78A9D7 /* OnboardingHeader.swift */,
+				D17B0A26F78D40E6A30394AB /* OnboardingTagline.swift */,
+				9139E10B85364CB48826F3F0 /* OnboardingNextButton.swift */,
+				6437ED6D147B4F68BD3577D3 /* OnboardingPageDots.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		77E36EC54FB1463088EC4C0B /* Pages */ = {
+			isa = PBXGroup;
+			children = (
+				C6EC0D44E07F46BD9EF5BEDC /* OnboardingPage1View.swift */,
+				E8BE52BD47704C23B9D53600 /* OnboardingPage2View.swift */,
+				D495352ECDEB4F258A19F254 /* OnboardingPage3View.swift */,
+				3F8C8534A80744CCA539F2E4 /* OnboardingPage4View.swift */,
+			);
+			path = Pages;
+			sourceTree = "<group>";
+		};
+		A772DB4EA3304A75B5CE2B63 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				1C0EE7D84CF14E35918CB970 /* Poppins-Regular.ttf */,
+				EE7CF5B0FDF84F489A1D84AA /* Poppins-Medium.ttf */,
+				C51FB5F344524D758E06FBEB /* Poppins-SemiBold.ttf */,
+				295BA0108F464FA4845023A9 /* Poppins-Bold.ttf */,
+				2EBF90FF59414CF7A38B05AB /* Poppins-ExtraBold.ttf */,
+				8F29ED3216404F0EBF9CBEC0 /* Poppins-LightItalic.ttf */,
+				D65F8451D8964F01B94C9F35 /* Poppins-MediumItalic.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -253,7 +331,14 @@
 			files = (
 				AA000000000000000000003B /* Assets.xcassets in Resources */,
 				AA0000000000000000000041 /* Preview Assets.xcassets in Resources */,
-			);
+							9E25117FB4FB45ABAC9BFB5E /* Poppins-Regular.ttf in Resources */,
+				5879E64CEE874CCFB2889014 /* Poppins-Medium.ttf in Resources */,
+				8AA2DE444283447EAB44065F /* Poppins-SemiBold.ttf in Resources */,
+				2D6FD361D6634D62AC1B8549 /* Poppins-Bold.ttf in Resources */,
+				C5D2670D2A08479B9E4BDC66 /* Poppins-ExtraBold.ttf in Resources */,
+				42EB31433021406CA5C2B7F7 /* Poppins-LightItalic.ttf in Resources */,
+				98E5C38CDB574AB5BDB0EC76 /* Poppins-MediumItalic.ttf in Resources */,
+);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -278,6 +363,17 @@
 				AA000000000000000000003A /* APIModels.swift in Sources */,
 				AA0000000000000000000044 /* ProfileView.swift in Sources */,
 				AA0000000000000000000046 /* Color+Almond.swift in Sources */,
+				8FC34095E1BB44A4A909F0B2 /* Font+Almond.swift in Sources */,
+				427918C903984F68860441CF /* SplashView.swift in Sources */,
+				1BA1221847564151BBF30EE0 /* HealthQuestionnaireView.swift in Sources */,
+				D879762845164DC5B871CE28 /* OnboardingHeader.swift in Sources */,
+				1E2D952BE54A4D6D825FF7BA /* OnboardingTagline.swift in Sources */,
+				78973B9FF27C4DC9AF68DB27 /* OnboardingNextButton.swift in Sources */,
+				8E9DB88BA8DE45F3B73B7383 /* OnboardingPageDots.swift in Sources */,
+				F78A0C354FCA44EF9B08770A /* OnboardingPage1View.swift in Sources */,
+				C6CA212BB89E4FF5B819C416 /* OnboardingPage2View.swift in Sources */,
+				E2FD5A952C8946BDA21874AB /* OnboardingPage3View.swift in Sources */,
+				26D441A484624064AE90780A /* OnboardingPage4View.swift in Sources */,
 				CC000000000000000000CC06 /* APIRiskViewModel.swift in Sources */,
 				CC000000000000000000CC08 /* RiskDashboardView.swift in Sources */,
 				CC000000000000000000CC0A /* MongoDBConfig.swift in Sources */,

@@ -15,6 +15,10 @@ struct ProfileView: View {
     @AppStorage("ob.hdl_cholesterol")    private var hdlCholesterol    = 0
     @AppStorage("ob.race_ethnicity")     private var raceEthnicity     = ""
 
+    #if DEBUG
+    @AppStorage("onboarding_complete") private var onboardingComplete = false
+    #endif
+
     private var bmi: Double? {
         guard heightCm > 0, weightKg > 0 else { return nil }
         let h = heightCm / 100
@@ -119,7 +123,7 @@ struct ProfileView: View {
 
                 // MARK: Clinical values
                 Section {
-                    OptionalIntRow(label: "Systolic BP",      unit: "mmHg",  value: $systolicBp)
+                    OptionalIntRow(label: "Systolic BP",       unit: "mmHg",  value: $systolicBp)
                     OptionalIntRow(label: "Total cholesterol", unit: "mg/dL", value: $totalCholesterol)
                     OptionalIntRow(label: "HDL cholesterol",   unit: "mg/dL", value: $hdlCholesterol)
                 } header: {
@@ -129,6 +133,14 @@ struct ProfileView: View {
                         .font(.caption)
                         .foregroundStyle(Color.labelTertiary)
                 }
+
+                #if DEBUG
+                Section("Developer") {
+                    Button("Reset onboarding", role: .destructive) {
+                        onboardingComplete = false
+                    }
+                }
+                #endif
             }
             .navigationTitle("Profile")
             .tint(Color.brandPrimary)

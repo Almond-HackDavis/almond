@@ -22,6 +22,10 @@ actor APIClient {
     /// POST /input — blocks ~3-5 s on the server and returns the finished OutputDocument directly.
     func submitInput(samples: HealthKitSamples) async throws -> BridgeOutput {
         let body = BridgeInputRequest(onboarding: buildOnboarding(), samples: samples)
+        if let data = try? JSONEncoder().encode(body),
+           let str = String(data: data, encoding: .utf8) {
+            print("[Almond] POST /input payload:\n\(str)")
+        }
         return try await post(path: "/input", body: body)
     }
 
